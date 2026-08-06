@@ -62,6 +62,29 @@ was granted. So the bug is not that a new UUID needs a new grant — it is that 
 new UUID at a path with a stale record is denied *without ever prompting*, and a
 new path is what forces the system to ask.
 
+Once a good grant exists for that path, plain `cp -R` overwrites keep working:
+later the same day, rebuilding and overwriting in place connected immediately
+with no prompt and no denial. Only two installs that day needed the dance, and
+both followed a change to the entitlements. So try the overwrite first and reach
+for the fresh path only when the log actually shows `Local network prohibited`.
+
+## The Mail widget says it cannot reach Mail (-600)
+
+`unread count of inbox` fails with -600 "Application isn't running" while Mail
+is running and `NSRunningApplication` can see it. The log names the real cause:
+
+```
+appleeventsd: Sandboxed application with pid N attempted to lookup
+App:"Mail"/"Mail"/"com.apple.mail" ... but was denied due to sandboxing.
+```
+
+The sandbox blocks the Apple event **target lookup**, not the send, so
+`com.apple.security.automation.apple-events` alone is not enough — the target
+must also be listed in `com.apple.security.temporary-exception.apple-events`.
+Both are in `project.yml`. Targeting by bundle id
+(`tell application id "com.apple.mail"`) does *not* work around it; that was
+tried and still returned -600.
+
 ### No prompt ever appears (macOS 26/27 betas)
 
 On the Tahoe and later betas a corrupt permission store can stop *any* app from
