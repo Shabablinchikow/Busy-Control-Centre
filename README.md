@@ -7,6 +7,10 @@ mirror of the display.
 Everything talks to the device's local HTTP API. No cloud, no accounts, no
 third-party dependencies — SwiftUI and the system frameworks only.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="The main window: device address, the Widgets and Carousel buttons, a mirror of the bar showing the Stocks widget, and the widget list" width="620">
+</p>
+
 ## Widgets
 
 | | |
