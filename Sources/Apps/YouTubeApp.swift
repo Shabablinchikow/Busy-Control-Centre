@@ -158,9 +158,15 @@ struct YouTubeSettingsView: View {
     var body: some View {
         Form {
             SecureField("API key", text: $apiKey)
+            Link("Get an API key →",
+                 destination: URL(string: "https://console.cloud.google.com/apis/library/youtube.googleapis.com")!)
+                .font(.caption)
+            Text("Enable the YouTube Data API v3 for a project, then create an API key under Credentials.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             TextField("Channel", text: $channel, prompt: Text("@mkbhd or UCxxxx"))
             TextField("Check every (s)", value: $interval, format: .number)
-            Text("YouTube Data API v3 key from the Google Cloud console. Google rounds subscriber counts to three significant figures, so the last digits are not live.")
+            Text("Google rounds subscriber counts to three significant figures, so the last digits are not live.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

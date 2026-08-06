@@ -10,7 +10,11 @@ final class MailApp: MiniApp {
     let app = "mail"
 
     static let mailBundleID = "com.apple.mail"
-    static let script = "tell application \"Mail\" to get unread count of inbox"
+    /// Targeted by bundle id, not by name. `tell application "Mail"` fails from
+    /// inside the sandbox with -600 "Application isn't running" even while Mail
+    /// is running and visible to NSRunningApplication: it is the name lookup that
+    /// is blocked, not the process. `application id` skips that lookup.
+    static let script = "tell application id \"com.apple.mail\" to get unread count of inbox"
 
     static let ink = "#FFFFFFFF"
     static let dim = "#8A8A8AFF"
@@ -33,7 +37,30 @@ final class MailApp: MiniApp {
                            "#      #",
                            "########"]
 
-    enum MailError: Error { case notRunning, refused(String) }
+    /// LocalizedError, not a bare Error: without it `localizedDescription` prints
+    /// "MailError error 0" and throws away the reason Mail actually gave.
+    enum MailError: LocalizedError {
+        case notRunning
+        case refused(code: Int, message: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notRunning: return "Mail is not running"
+            // -1743 is the Automation denial; the rest come from Mail itself.
+            case .refused(let code, let message):
+                switch code {
+                case -1743:
+                    return "not allowed to control Mail — approve it in Privacy & Security → Automation"
+                // Seen when the sandbox blocks the target lookup rather than the
+                // send; the entitlement in project.yml is what fixes it.
+                case -600:
+                    return "cannot reach Mail (-600) — check the app's Apple Events entitlement"
+                default:
+                    return "\(message) (\(code))"
+                }
+            }
+        }
+    }
 
     // MARK: - Main loop
 
@@ -46,12 +73,11 @@ final class MailApp: MiniApp {
                 let code = try await client.draw(app: app, elements: Self.frame(count),
                                                  priority: 60)
                 status(code == 409 ? "display busy" : Self.statusLine(count))
-            } catch MailError.notRunning {
+            } catch {
                 // Never start Mail to read it: an Apple event to a quit app
                 // launches it, which is not something a status widget should do.
-                status("Mail is not running")
-            } catch {
-                status("Mail: \(error.localizedDescription)")
+                // MailError describes itself, so no case-by-case handling here.
+                status(error.localizedDescription)
             }
             if !(await barSleep(interval)) { break }
         }
@@ -68,9 +94,9 @@ final class MailApp: MiniApp {
         var err: NSDictionary?
         let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
         if let err {
-            // -1743 is the Automation denial; anything else is Mail complaining.
-            throw MailError.refused(err[NSAppleScript.errorMessage] as? String
-                                    ?? "AppleScript error \(err[NSAppleScript.errorNumber] ?? "?")")
+            throw MailError.refused(
+                code: (err[NSAppleScript.errorNumber] as? NSNumber)?.intValue ?? 0,
+                message: err[NSAppleScript.errorMessage] as? String ?? "AppleScript failed")
         }
         return Int(result?.int32Value ?? 0)
     }

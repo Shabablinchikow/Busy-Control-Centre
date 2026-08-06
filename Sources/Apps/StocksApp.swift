@@ -25,8 +25,9 @@ final class StocksApp: MiniApp {
     static let yLine2 = 8
     static let xRight = 73
     /// The 5px arrow, aligned with line 2's ink rows (10-14).
-    static let arrowX = 0
     static let arrowY = 10
+    /// Advance per character in the device's 5px font.
+    static let charW = 4
 
     struct Quote {
         var symbol = "", price = 0.0, prevClose = 0.0
@@ -131,6 +132,12 @@ final class StocksApp: MiniApp {
         String(format: "%.2f%%", abs(pct))
     }
 
+    /// Left edge of the arrow, so it sits just clear of the right-aligned
+    /// percentage underneath the price. Right-aligned text ends flush at x=72.
+    static func arrowX(pct text: String) -> Int {
+        max(0, 72 - text.count * charW - 2 - 5)
+    }
+
     static func color(_ q: Quote) -> String {
         guard q.marketOpen else { return shut }
         let pct = pctChange(price: q.price, prevClose: q.prevClose)
@@ -170,14 +177,14 @@ final class StocksApp: MiniApp {
             textEl("price", fmtPrice(q.price), x: xRight, y: yLine1, font: "small",
                    color: ink, align: "top_right"),
         ]
+        // Arrow and percentage sit at the right, under the price. The grey arrow
+        // is the closed-market signal, so nothing else marks it.
+        let pctText = fmtPct(pct)
         els += Glyph.els("arrow", pct < 0 ? Glyph.arrowDown : Glyph.arrowUp,
-                         x: arrowX, y: arrowY, color: tint, slots: Glyph.arrowSlots)
-        els.append(textEl("pct", fmtPct(pct), x: 7, y: yLine2, font: "small",
-                          color: tint, align: "top_left"))
-        // Redrawn every tick so a market close is never left implied by a stale
-        // element; empty text is how an element is made to disappear.
-        els.append(textEl("shut", q.marketOpen ? "" : "·", x: xRight, y: yLine2,
-                          font: "small", color: dim, align: "top_right"))
+                         x: arrowX(pct: pctText), y: arrowY, color: tint,
+                         slots: Glyph.arrowSlots)
+        els.append(textEl("pct", pctText, x: xRight, y: yLine2, font: "small",
+                          color: tint, align: "top_right"))
         return els
     }
 
@@ -206,6 +213,13 @@ final class StocksApp: MiniApp {
 
         assert(fmtPrice(312.244) == "312.24" && fmtPrice(1234.56) == "1234.6",
                "four significant-ish digits so wide prices still fit")
+
+        // The arrow tracks the width of the percentage it precedes.
+        assert(arrowX(pct: "0.40%") == 45, "5 characters leaves the arrow at 45")
+        assert(arrowX(pct: "12.34%") < arrowX(pct: "0.40%"),
+               "a wider percentage pushes the arrow left")
+        assert(arrowX(pct: String(repeating: "9", count: 30)) == 0,
+               "an absurd percentage clamps instead of going negative")
     }
     #endif
 }

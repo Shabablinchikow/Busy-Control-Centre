@@ -24,10 +24,17 @@ targets:
         com.apple.security.personal-information.location: true
         # Claude Limits: user picks ~/.claude via NSOpenPanel (bookmark-based)
         com.apple.security.files.user-selected.read-only: true
-        # Mail widget: AppleScript to Apple Mail for the unread count. The
-        # sanctioned entitlement, not a temporary-exception — the per-target
-        # Automation grant is still asked for at runtime.
+        # Mail widget: AppleScript to Apple Mail for the unread count.
         com.apple.security.automation.apple-events: true
+        # ...and this one is not optional despite the name. With only the
+        # entitlement above, appleeventsd logs "attempted to lookup
+        # App:.../com.apple.mail ... but was denied due to sandboxing" and the
+        # script fails with -600 "Application isn't running" while Mail is
+        # plainly running. The sandbox blocks the target *lookup*, so the target
+        # has to be named here. scripting-targets is no use: it only covers apps
+        # that publish an sdef access group, which Mail does not.
+        com.apple.security.temporary-exception.apple-events:
+          - com.apple.mail
     info:
       path: Info.plist
       properties:

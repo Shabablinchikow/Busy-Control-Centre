@@ -94,12 +94,15 @@ final class WeatherApp: MiniApp {
     }
 
     /// The UV index is a 0-11 scale, so a whole number is the honest precision.
-    static func fmtUV(_ uv: Double) -> String { "UV \(Int(uv.rounded()))" }
+    ///
+    /// Lowercase: the device font's capital V reads as a Y at 5px, so "UV 7"
+    /// looked like "UY 7" on the bar.
+    static func fmtUV(_ uv: Double) -> String { "uv \(Int(uv.rounded()))" }
 
-    static func fmtRain(_ pct: Int) -> String { "\(pct)%" }
+    static func fmtRain(_ pct: Int) -> String { "rain: \(pct)%" }
 
     static func statusLine(_ c: Conditions, units: Units) -> String {
-        "\(fmtTemp(c, units))  \(fmtUV(c.uv))  rain \(fmtRain(c.rainPct))"
+        "\(fmtTemp(c, units))  \(fmtUV(c.uv))  \(fmtRain(c.rainPct))"
     }
 
     static func num(_ v: Any?) -> Double? {
@@ -127,8 +130,14 @@ final class WeatherApp: MiniApp {
         var c = Conditions(tempC: 18.9, uv: 0.2, rainPct: 0, code: 0, isDay: true)
         assert(fmtTemp(c, .metric) == "19C", "rounded Celsius")
         assert(fmtTemp(c, .imperial) == "66F", "18.9C is 66F")
-        assert(fmtUV(0.2) == "UV 0" && fmtUV(7.4) == "UV 7", "whole-number UV")
-        assert(fmtRain(0) == "0%" && fmtRain(100) == "100%", "rain probability")
+        // Lowercase, because a 5px capital V reads as a Y.
+        assert(fmtUV(0.2) == "uv 0" && fmtUV(7.4) == "uv 7", "whole-number UV")
+        assert(!fmtUV(7).contains("V"), "no capital V anywhere in the label")
+        assert(fmtRain(0) == "rain: 0%" && fmtRain(100) == "rain: 100%", "labelled rain")
+        // Line 2 is "uv N" from x=10 and the rain text flush right; at the widest
+        // both must still fit the 72px display without colliding.
+        assert(xText + fmtUV(11).count * 4 < 72 - fmtRain(100).count * 4,
+               "the widest uv and rain labels do not overlap")
 
         // Code mapping, including the day/night split on clear skies.
         assert(Glyph.weatherIcon(code: 0, isDay: true) == Glyph.sun, "clear day")
