@@ -13,7 +13,3 @@ DerivedData/
 *.zip
 *.dmg
 
-# Third-party material — not ours to redistribute.
-# Theme card artwork belongs to BUSY; the banner picker falls back to plain
-# text labels when it is absent. See README "Banner artwork".
-Resources/Themes/

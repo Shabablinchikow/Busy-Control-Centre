@@ -10,7 +10,7 @@ struct Banner: Identifiable, Hashable {
         Banner(id: "busy", title: "Busy"),
         Banner(id: "on_call", title: "On Call"),
         Banner(id: "meeting", title: "Meeting"),
-        Banner(id: "do_not_disturb", title: "Do Not Disturb"),
+        Banner(id: "dnd", title: "Do Not Disturb"),
         Banner(id: "keep_out", title: "Keep Out"),
         Banner(id: "on_air", title: "On Air"),
         Banner(id: "flow", title: "Flow"),

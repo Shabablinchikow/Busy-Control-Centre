@@ -16,7 +16,10 @@ Sources/
   Banners.swift              device themes + BannerPicker
   MirrorView.swift           LED-matrix mirror of /api/screen
   LocalNetworkPermission.swift  Bonjour trigger for the TCC prompt
+  AboutView.swift            attributions window
   Apps/*.swift               one file per widget
+Resources/Themes/            banner artwork (CC-BY-SA-4.0, see ATTRIBUTION.md)
+Scripts/fetch-themes.sh      refreshes that artwork from the firmware repo
 ```
 
 ## Build / ship
@@ -76,4 +79,8 @@ keychain profile `busybar-notary`.
   needs no Automation permission — deliberately, because that prompt is also
   unreliable on the beta. It only learns state on the first play/pause after
   launch; there is no way to poll it without AppleScript.
-- Theme card artwork is BUSY's and is gitignored; the picker degrades to labels.
+- Theme ids come from the firmware's `applications/main/busy/resources/apps_assets/busy/themes/`
+  folder names — note it is `dnd`, not `do_not_disturb`.
+- Banner artwork is CC-BY-SA-4.0 (Flipper FZCO), not MIT like the rest. Keep the
+  attribution in `Resources/Themes/ATTRIBUTION.md`, the README and the About
+  window in step if it changes.

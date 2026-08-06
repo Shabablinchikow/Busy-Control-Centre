@@ -9,8 +9,11 @@ targets:
     platform: macOS
     sources:
       - Sources
+      # Banner artwork is not in the repo (see README); the picker falls back to
+      # text labels, so the folder is allowed to be absent.
       - path: Resources/Themes
         type: folder
+        optional: true
     entitlements:
       path: BusyBar.entitlements
       properties:

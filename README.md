@@ -60,14 +60,11 @@ unsigned build for testing.
 
 ## Banner artwork
 
-The banner picker shows the device's theme cards. That artwork belongs to BUSY
-and is **not** included in this repository. Without it the picker falls back to
-plain text labels, which work fine.
-
-To use the real cards locally, drop PNGs into `BusyBar/Resources/Themes/` named
-after the theme id: `busy.png`, `on_call.png`, `meeting.png`, `do_not_disturb.png`,
-`keep_out.png`, `on_air.png`, `flow.png`, `coding.png`, `booked.png`,
-`back_soon.png`, `lunch.png`, `chill_time.png`, `low_social_battery.png`.
+The banner picker previews each theme with a real frame from the bar's own
+animation, taken from the firmware repository. Those images are CC-BY-SA-4.0 and
+are committed under `Resources/Themes/` — refresh them with
+`./Scripts/fetch-themes.sh`. Any theme without artwork falls back to a text
+label. See [Attributions](#attributions).
 
 ## Connecting
 
@@ -78,6 +75,17 @@ app sends it as `X-API-Token`.
 macOS will ask for Local Network permission on first launch. If the prompt never
 appears and the app cannot reach the bar, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
+## Attributions
+
+| What | Source | License |
+|---|---|---|
+| Banner artwork in `Resources/Themes/` | [busy-app/busybar-firmware](https://github.com/busy-app/busybar-firmware) `assets/shared/animations`, © 2024–2026 Flipper FZCO. One frame extracted per animation, images otherwise unmodified. | [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
+| pISS Stream widget | Idea from [pISSStream](https://github.com/Jaennaet/pISSStream); telemetry from NASA's public ISS Lightstreamer feed | — |
+| Widget data | wheretheiss.at, adsb.fi, adsbdb.com | their respective terms |
+
+Also shown in the app under **Busy Control Centre → About**.
+
 ## License
 
-MIT — see [LICENSE](LICENSE). Not affiliated with or endorsed by BUSY.
+MIT — see [LICENSE](LICENSE), except the banner artwork noted above, which stays
+under CC-BY-SA-4.0. Not affiliated with or endorsed by BUSY.

@@ -17,6 +17,12 @@ struct BusyBarApp: App {
         }
         // resizable: drag the window wider and the LED matrix grows with it
         .windowResizability(.contentMinSize)
+        .commands {
+            // replaces the default About panel with our attributions
+            CommandGroup(replacing: .appInfo) {
+                Button("About Busy Control Centre") { AboutWindow.show() }
+            }
+        }
     }
 }
 
