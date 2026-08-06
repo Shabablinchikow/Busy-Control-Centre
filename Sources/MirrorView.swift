@@ -98,34 +98,41 @@ private struct LEDMatrix: View {
 
     var body: some View {
         Canvas(rendersAsynchronously: true) { ctx, size in
-            let cell = min(size.width / Double(frame.w), size.height / Double(frame.h))
-            let dot = cell * 0.82
-            let ox = (size.width - cell * Double(frame.w)) / 2
-            let oy = (size.height - cell * Double(frame.h)) / 2
-            let radius = dot * 0.28
+            let cols = CGFloat(frame.w)
+            let rows = CGFloat(frame.h)
+            let cell: CGFloat = min(size.width / cols, size.height / rows)
+            let dot: CGFloat = cell * 0.82
+            let ox: CGFloat = (size.width - cell * cols) / 2
+            let oy: CGFloat = (size.height - cell * rows) / 2
+            let radius: CGFloat = dot * 0.28
+
+            // Types are spelled out and the maths kept in small steps: as one
+            // expression the Swift 5.10 type checker times out on this loop.
+            let halo: CGFloat = dot * 0.45
+            let unlit: GraphicsContext.Shading = .color(.white.opacity(0.035))
 
             for y in 0..<frame.h {
+                let rowBase: Int = y * frame.w
+                let py: CGFloat = oy + CGFloat(y) * cell + (cell - dot) / 2
                 for x in 0..<frame.w {
-                    let i = (y * frame.w + x) * 3
-                    let b = Double(frame.rgb[i]) / 255
-                    let g = Double(frame.rgb[i + 1]) / 255
-                    let r = Double(frame.rgb[i + 2]) / 255
-                    let lit = r + g + b > 0.04
-                    let px = ox + Double(x) * cell + (cell - dot) / 2
-                    let py = oy + Double(y) * cell + (cell - dot) / 2
+                    let i: Int = (rowBase + x) * 3
+                    let b: Double = Double(frame.rgb[i]) / 255.0
+                    let g: Double = Double(frame.rgb[i + 1]) / 255.0
+                    let r: Double = Double(frame.rgb[i + 2]) / 255.0
+                    let px: CGFloat = ox + CGFloat(x) * cell + (cell - dot) / 2
                     let rect = CGRect(x: px, y: py, width: dot, height: dot)
 
-                    if lit {
-                        // halo first, then the dot on top
-                        ctx.fill(Path(roundedRect: rect.insetBy(dx: -dot * 0.45, dy: -dot * 0.45),
-                                      cornerRadius: radius * 2),
-                                 with: .color(Color(red: r, green: g, blue: b).opacity(0.18)))
+                    if r + g + b > 0.04 {
+                        let color = Color(red: r, green: g, blue: b)
+                        let glow = CGRect(x: rect.minX - halo, y: rect.minY - halo,
+                                          width: dot + halo * 2, height: dot + halo * 2)
+                        ctx.fill(Path(roundedRect: glow, cornerRadius: radius * 2),
+                                 with: .color(color.opacity(0.18)))
                         ctx.fill(Path(roundedRect: rect, cornerRadius: radius),
-                                 with: .color(Color(red: r, green: g, blue: b)))
+                                 with: .color(color))
                     } else {
                         // unlit dots stay faintly visible, like the real matrix
-                        ctx.fill(Path(roundedRect: rect, cornerRadius: radius),
-                                 with: .color(.white.opacity(0.035)))
+                        ctx.fill(Path(roundedRect: rect, cornerRadius: radius), with: unlit)
                     }
                 }
             }
