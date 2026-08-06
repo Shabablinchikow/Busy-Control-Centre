@@ -40,8 +40,8 @@ targets:
       properties:
         CFBundleIconFile: AppIcon
         CFBundleDisplayName: Busy Control Centre
-        CFBundleShortVersionString: 1.0.2
-        CFBundleVersion: "4"
+        CFBundleShortVersionString: 1.1.0
+        CFBundleVersion: "5"
         LSApplicationCategoryType: public.app-category.utilities
         NSLocalNetworkUsageDescription: BusyBar talks to the BUSY Bar device over USB or Wi-Fi on your local network.
         NSBonjourServices: [_busybar._tcp]
@@ -53,8 +53,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ru.shbbl.BusyBar
         PRODUCT_NAME: Busy Control Centre
-        MARKETING_VERSION: 1.0.2
-        CURRENT_PROJECT_VERSION: 4
+        MARKETING_VERSION: 1.1.0
+        CURRENT_PROJECT_VERSION: 5
         DEVELOPMENT_TEAM: 72WR88WUFR
         CODE_SIGN_STYLE: Automatic
         SWIFT_VERSION: "5.0"

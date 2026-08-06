@@ -18,13 +18,24 @@ third-party dependencies — SwiftUI and the system frameworks only.
 | **Flightradar** | Tracks one flight by number: route, altitude, speed |
 | **Claude Limits** | Live Claude Code usage bars with the Clawd mascot |
 | **pISS Stream** | ISS urine-tank level from NASA telemetry, à la [pISSStream](https://github.com/Jaennaet/pISSStream) |
+| **Stocks** | Watchlist prices and the day's change; the arrow greys out when that exchange is shut |
+| **Weather** | Condition icon, temperature, UV index and chance of rain |
+| **YouTube** | Subscriber count for a channel, using your own API key |
+| **Mail** | Unread count from Apple Mail's inbox, or a small celebration |
+| **Status** | Pin a banner on the bar until you switch it off |
 | **Timer** | Countdown run by the bar, with your choice of banner |
 | **Pomodoro** | Work/rest cycles run by the bar |
 | **On Call** | Mic in use → the bar shows an ON CALL banner |
 
-Widgets draw via `/api/display/draw`. Timer, Pomodoro and On Call instead drive
-the device's built-in focus session (`/api/busy/snapshot`), which renders the
-bar's own themed animations at session priority.
+Widgets draw via `/api/display/draw`. Status, Timer, Pomodoro and On Call instead
+drive the device's built-in focus session (`/api/busy/snapshot`), which renders
+the bar's own themed animations at session priority.
+
+**Choosing and rotating them.** Two windows, ⌘⇧1 and ⌘⇧2. *Widgets* picks which
+ones the main list shows, so it stays short. *Carousel* picks a set to rotate
+through and how many seconds each gets; the two selections are independent, and
+switching a widget on by hand stops the rotation so the bar stays where you put
+it.
 
 **Priority.** Sessions outrank widgets, and the mic outranks everything: when
 On Call takes the screen it captures any running timer and restores that exact
@@ -81,7 +92,8 @@ appears and the app cannot reach the bar, see [docs/troubleshooting.md](docs/tro
 |---|---|---|
 | Banner artwork in `Resources/Themes/` | [busy-app/busybar-firmware](https://github.com/busy-app/busybar-firmware) `assets/shared/animations`, © 2024–2026 Flipper FZCO. One frame extracted per animation, images otherwise unmodified. | [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 | pISS Stream widget | Idea from [pISSStream](https://github.com/Jaennaet/pISSStream); telemetry from NASA's public ISS Lightstreamer feed | — |
-| Widget data | wheretheiss.at, adsb.fi, adsbdb.com | their respective terms |
+| Weather data | [Open-Meteo](https://open-meteo.com/) | [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Widget data | wheretheiss.at, adsb.fi, adsbdb.com, Yahoo Finance (unofficial endpoint), YouTube Data API v3 | their respective terms |
 
 Also shown in the app under **Busy Control Centre → About**.
 

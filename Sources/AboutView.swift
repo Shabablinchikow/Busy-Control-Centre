@@ -50,7 +50,10 @@ struct AboutView: View {
                     """, link: "https://github.com/busy-app/busybar-firmware")
                 credit("pISS Stream", "Inspired by pISSStream by Jaennaet. ISS telemetry courtesy of NASA.",
                        link: "https://github.com/Jaennaet/pISSStream")
-                credit("Data sources", "wheretheiss.at · adsb.fi · adsbdb.com",
+                credit("Weather data", "Open-Meteo, licensed CC-BY-4.0.",
+                       link: "https://open-meteo.com/")
+                credit("Data sources",
+                       "wheretheiss.at · adsb.fi · adsbdb.com · Yahoo Finance · YouTube Data API",
                        link: nil)
             }
 
