@@ -1,0 +1,48 @@
+name: BusyBar
+options:
+  bundleIdPrefix: ru.shbbl
+  deploymentTarget:
+    macOS: "14.0"
+targets:
+  BusyBar:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+      - path: Resources/Themes
+        type: folder
+    entitlements:
+      path: BusyBar.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        # NWListener in the Bonjour permission trigger needs server
+        com.apple.security.network.server: true
+        com.apple.security.personal-information.location: true
+        # Claude Limits: user picks ~/.claude via NSOpenPanel (bookmark-based)
+        com.apple.security.files.user-selected.read-only: true
+    info:
+      path: Info.plist
+      properties:
+        CFBundleIconFile: AppIcon
+        CFBundleDisplayName: Busy Control Centre
+        CFBundleShortVersionString: 1.0.1
+        CFBundleVersion: "3"
+        LSApplicationCategoryType: public.app-category.utilities
+        NSLocalNetworkUsageDescription: BusyBar talks to the BUSY Bar device over USB or Wi-Fi on your local network.
+        NSBonjourServices: [_busybar._tcp]
+        NSLocationWhenInUseUsageDescription: Fills in your coordinates for the ISS widget.
+        NSHumanReadableCopyright: © 2026 Aleksei Shabalin
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.shbbl.BusyBar
+        PRODUCT_NAME: Busy Control Centre
+        MARKETING_VERSION: 1.0.1
+        CURRENT_PROJECT_VERSION: 3
+        DEVELOPMENT_TEAM: 72WR88WUFR
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
+        # ponytail: hardened runtime off — personal dev app, avoids mic/apple-events
+        # entitlement plumbing; enable + add entitlements if this ever gets notarized
+        ENABLE_HARDENED_RUNTIME: NO
