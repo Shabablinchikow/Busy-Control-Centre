@@ -93,8 +93,23 @@ struct BarClient {
         return (resp as? HTTPURLResponse)?.statusCode ?? 0
     }
 
+    /// GET /api/busy/profiles/{slot} — "busy" or "custom".
+    func busyProfile(slot: String) async -> [String: Any]? {
+        let req = request(base.appendingPathComponent("api/busy/profiles/\(slot)"), method: "GET")
+        guard let (data, _) = try? await Self.session.data(for: req),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              obj["id"] != nil else { return nil }
+        return obj
+    }
+
     /// PUT /api/busy/snapshot. A running session owns the screen at priority 90,
     /// above every widget, and renders the device's own themed animation.
+    ///
+    /// The card_id must point at a profile whose timer settings match the
+    /// snapshot: clients (the phone app) render the session through that
+    /// profile, so an INFINITE session on an INTERVAL profile shows up as
+    /// "timer is up". The "custom" slot ships as INFINITE, so untimed sessions
+    /// go there.
     @discardableResult
     func setBusySession(theme: String, running: Bool, triggerSmartHome: Bool) async throws -> Int {
         var snapshot: [String: Any] = [
@@ -103,8 +118,11 @@ struct BarClient {
                                   "trigger_smart_home": triggerSmartHome],
         ]
         if running {
+            let profile = await busyProfile(slot: "custom")
+            let infinite = (profile?["timer_settings"] as? [String: Any])?["type"] as? String == "INFINITE"
             snapshot["type"] = "INFINITE"
-            snapshot["card_id"] = "00000000-0000-0000-0000-000000000000"
+            snapshot["card_id"] = (infinite ? profile?["id"] as? String : nil)
+                ?? "00000000-0000-0000-0000-000000000002"
             snapshot["is_paused"] = false
         } else {
             snapshot["type"] = "NOT_STARTED"

@@ -2,8 +2,14 @@ import SwiftUI
 
 // MARK: - Shared focus-session plumbing (also used by PomodoroApp)
 
-/// The bar treats a session card as "the app's own", so a zero UUID is what the
-/// HTTP API expects for sessions that don't come from a saved profile.
+/// The "busy" profile slot. Clients render a session through the profile its
+/// card_id names, so the snapshot type should match that profile's timer
+/// settings: this slot is INTERVAL, which suits the pomodoro exactly.
+///
+/// A plain SIMPLE countdown has no matching profile — no slot ships with SIMPLE
+/// settings — so the phone app may describe it oddly. The bar itself counts down
+/// correctly either way, and rewriting a user's profile to fix a cosmetic label
+/// elsewhere isn't worth it.
 let busyCardID = "00000000-0000-0000-0000-000000000000"
 
 func busyBarSettings(theme: String, smartHome: Bool) -> [String: Any] {
