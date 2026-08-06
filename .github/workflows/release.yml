@@ -29,10 +29,11 @@ jobs:
         run: brew install xcodegen
 
       - name: Set team id
-        if: env.TEAM != ''
+        if: ${{ secrets.MACOS_DEVELOPMENT_TEAM != '' }}
         env:
           TEAM: ${{ secrets.MACOS_DEVELOPMENT_TEAM }}
-        run: /usr/bin/sed -i '' "s/DEVELOPMENT_TEAM: .*/DEVELOPMENT_TEAM: $TEAM/" project.yml
+        run: |
+          /usr/bin/sed -i '' "s/DEVELOPMENT_TEAM: .*/DEVELOPMENT_TEAM: $TEAM/" project.yml
 
       - name: Generate project
         run: xcodegen generate
@@ -45,7 +46,7 @@ jobs:
             build
 
       - name: Import signing certificate
-        if: env.CERT != ''
+        if: ${{ secrets.MACOS_CERTIFICATE != '' }}
         env:
           CERT: ${{ secrets.MACOS_CERTIFICATE }}
           CERT_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -61,7 +62,7 @@ jobs:
           rm -f /tmp/cert.p12
 
       - name: Sign
-        if: env.IDENTITY != ''
+        if: ${{ secrets.MACOS_SIGNING_IDENTITY != '' }}
         env:
           IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
@@ -79,7 +80,7 @@ jobs:
           ditto -c -k --keepParent "$APP" "Busy-Control-Centre-$VERSION.zip"
 
       - name: Notarise and staple
-        if: env.NOTARY_APPLE_ID != ''
+        if: ${{ secrets.NOTARY_APPLE_ID != '' }}
         env:
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
