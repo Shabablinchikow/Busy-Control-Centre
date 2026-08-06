@@ -95,6 +95,12 @@ appears and the app cannot reach the bar, see [docs/troubleshooting.md](docs/tro
 | What | Source | License |
 |---|---|---|
 | Banner artwork in `Resources/Themes/` | [busy-app/busybar-firmware](https://github.com/busy-app/busybar-firmware) `assets/shared/animations`, © 2024–2026 Flipper FZCO. One frame extracted per animation, images otherwise unmodified. | [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
+| **Clock** widget | Swift port of [clock](https://github.com/maxswinkels/busybar-apps/tree/main/apps/clock) by Max Swinkels ([@maxswinkels](https://github.com/maxswinkels)) | [MIT](THIRD-PARTY.md) |
+| **Nyan Cat** widget | Swift port of [nyan-cat](https://github.com/maxswinkels/busybar-apps/tree/main/apps/nyan-cat) by Max Swinkels ([@maxswinkels](https://github.com/maxswinkels)) | [MIT](THIRD-PARTY.md) |
+| **ISS Alert** widget | Swift port of [iss-alert](https://github.com/maxswinkels/busybar-apps/tree/main/apps/iss-alert) by Max Swinkels ([@maxswinkels](https://github.com/maxswinkels)) | [MIT](THIRD-PARTY.md) |
+| **Music** widget | Swift port of [audio-visualizer](https://github.com/maxswinkels/busybar-apps/tree/main/apps/audio-visualizer) by Max Swinkels ([@maxswinkels](https://github.com/maxswinkels)) | [MIT](THIRD-PARTY.md) |
+| **Flightradar** widget | Swift port of [flightradar](https://github.com/maxswinkels/busybar-apps/tree/main/apps/flightradar) by Max Swinkels ([@maxswinkels](https://github.com/maxswinkels)) | [MIT](THIRD-PARTY.md) |
+| **Claude Limits** widget | Swift port of [busybar-limits](https://github.com/rbhbokka/busybar-limits) by Kiryl ([@rbhbokka](https://github.com/rbhbokka)) | [MIT](THIRD-PARTY.md) |
 | pISS Stream widget | Idea from [pISSStream](https://github.com/Jaennaet/pISSStream); telemetry from NASA's public ISS Lightstreamer feed | — |
 | Weather data | [Open-Meteo](https://open-meteo.com/) | [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) |
 | Widget data | wheretheiss.at, adsb.fi, adsbdb.com, Yahoo Finance (unofficial endpoint), YouTube Data API v3 | their respective terms |
@@ -104,4 +110,6 @@ Also shown in the app under **Busy Control Centre → About**.
 ## License
 
 MIT — see [LICENSE](LICENSE), except the banner artwork noted above, which stays
-under CC-BY-SA-4.0. Not affiliated with or endorsed by BUSY.
+under CC-BY-SA-4.0. Six widgets are ports of MIT-licensed apps from the BUSY Bar
+Apps gallery; their copyright and permission notices are reproduced in full in
+[THIRD-PARTY.md](THIRD-PARTY.md). Not affiliated with or endorsed by BUSY.

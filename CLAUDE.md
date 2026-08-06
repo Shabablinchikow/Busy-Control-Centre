@@ -99,3 +99,8 @@ keychain profile `busybar-notary`.
 - Banner artwork is CC-BY-SA-4.0 (Flipper FZCO), not MIT like the rest. Keep the
   attribution in `Resources/Themes/ATTRIBUTION.md`, the README and the About
   window in step if it changes.
+- Clock, Nyan Cat, ISS Alert, Music and Flightradar are ports of @maxswinkels'
+  apps from the BUSY Bar Apps gallery, and Claude Limits of @rbhbokka's — all
+  MIT, whose notices must travel with the code. `THIRD-PARTY.md` carries them in
+  full; the README table and the About window mirror it. Port another gallery app
+  and it needs a row in all three.

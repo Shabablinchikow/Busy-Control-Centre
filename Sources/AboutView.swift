@@ -7,10 +7,11 @@ enum AboutWindow {
 
     static func show() {
         if let window { window.makeKeyAndOrderFront(nil); return }
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 400),
-                         styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 560),
+                         styleMask: [.titled, .closable, .resizable],
+                         backing: .buffered, defer: false)
         w.title = "About"
-        w.contentView = NSHostingView(rootView: AboutView())
+        w.contentView = NSHostingView(rootView: AboutView().scrollable)
         w.isReleasedWhenClosed = false
         w.center()
         w.makeKeyAndOrderFront(nil)
@@ -48,6 +49,7 @@ struct AboutView: View {
                     (assets/shared/animations), © 2024–2026 Flipper FZCO, \
                     licensed CC-BY-SA-4.0.
                     """, link: "https://github.com/busy-app/busybar-firmware")
+                portedWidgets
                 credit("pISS Stream", "Inspired by pISSStream by Jaennaet. ISS telemetry courtesy of NASA.",
                        link: "https://github.com/Jaennaet/pISSStream")
                 credit("Weather data", "Open-Meteo, licensed CC-BY-4.0.",
@@ -63,6 +65,54 @@ struct AboutView: View {
         }
         .padding(20)
         .frame(width: 420)
+    }
+
+    /// Scrolls, so adding a credit can never silently clip the bottom of a
+    /// fixed-size window.
+    var scrollable: some View {
+        ScrollView { body.frame(maxWidth: .infinity, alignment: .leading) }
+    }
+
+    /// Each ported widget credited to its own author, rather than one blanket
+    /// line: five happen to share an author, but that is a fact about the gallery,
+    /// not something the credits should assume. Kept as a list because the credit
+    /// Group is limited to ten children.
+    private static let ported: [(widget: String, author: String, source: String)] = [
+        ("Clock", "Max Swinkels (@maxswinkels)",
+         "https://github.com/maxswinkels/busybar-apps/tree/main/apps/clock"),
+        ("Nyan Cat", "Max Swinkels (@maxswinkels)",
+         "https://github.com/maxswinkels/busybar-apps/tree/main/apps/nyan-cat"),
+        ("ISS Alert", "Max Swinkels (@maxswinkels)",
+         "https://github.com/maxswinkels/busybar-apps/tree/main/apps/iss-alert"),
+        ("Music", "Max Swinkels (@maxswinkels)",
+         "https://github.com/maxswinkels/busybar-apps/tree/main/apps/audio-visualizer"),
+        ("Flightradar", "Max Swinkels (@maxswinkels)",
+         "https://github.com/maxswinkels/busybar-apps/tree/main/apps/flightradar"),
+        ("Claude Limits", "Kiryl (@rbhbokka)",
+         "https://github.com/rbhbokka/busybar-limits"),
+    ]
+
+    @ViewBuilder
+    private var portedWidgets: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Ported widgets").font(.callout.weight(.medium))
+            Text("Swift ports of MIT-licensed apps from the BUSY Bar Apps gallery. Full notices in THIRD-PARTY.md.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(Self.ported, id: \.widget) { p in
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(p.widget).font(.caption.weight(.medium))
+                    if let url = URL(string: p.source) {
+                        Link(p.author, destination: url).font(.caption)
+                    } else {
+                        Text(p.author).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Link("maxswinkels.github.io/busybar-apps",
+                 destination: URL(string: "https://maxswinkels.github.io/busybar-apps/")!)
+                .font(.caption)
+        }
     }
 
     @ViewBuilder
