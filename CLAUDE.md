@@ -13,6 +13,8 @@ Sources/
   BusyBarApp.swift           @main, the widget `registry`, main window UI
   MiniApp.swift              MiniApp protocol, AppEntry, Runner (start/stop/persist)
   BarClient.swift            device HTTP client, element builders, Frame → PNG
+  WidgetVisibility.swift     which widgets the main list shows + Widgets window
+  Carousel.swift             timed rotation through chosen widgets + its window
   Banners.swift              device themes + BannerPicker
   MirrorView.swift           LED-matrix mirror of /api/screen
   LocalNetworkPermission.swift  Bonjour trigger for the TCC prompt
@@ -61,6 +63,10 @@ keychain profile `busybar-notary`.
   widget (On Call, Timer, Pomodoro); everything else is one-at-a-time.
 - Cleanup after cancellation must run detached — URLSession refuses to send from
   a cancelled task, so a `clear()` in the normal path never reaches the device.
+- The carousel stops the outgoing member itself rather than relying on
+  `Runner.start`'s eviction, because `exclusive: false` monitors are built to
+  coexist and would otherwise pile up. `Runner` knows nothing about the carousel:
+  `AppRow` calls `carousel.stop()` before `runner.toggle`, so manual intent wins.
 
 ## Gotchas that cost time
 

@@ -4,15 +4,23 @@ import ServiceManagement
 @main
 struct BusyBarApp: App {
     @StateObject private var runner = Runner()
+    @StateObject private var visibility = WidgetVisibility()
+    @StateObject private var carousel = Carousel()
     @AppStorage("host") private var host = "10.0.4.20"
 
     var body: some Scene {
         Window("Busy Control Centre", id: "main") {
             ContentView()
                 .environmentObject(runner)
+                .environmentObject(visibility)
+                .environmentObject(carousel)
                 .onAppear {
+                    #if DEBUG
+                    Carousel.selfCheck()
+                    #endif
                     LocalNetworkPermission.trigger()
                     runner.restore()
+                    carousel.restore()
                 }
         }
         // resizable: drag the window wider and the LED matrix grows with it
@@ -22,7 +30,37 @@ struct BusyBarApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Busy Control Centre") { AboutWindow.show() }
             }
+            CommandGroup(before: .windowList) {
+                SettingsWindowButtons()
+                Divider()
+            }
         }
+
+        Window("Widgets", id: "widgets") {
+            WidgetsView()
+                .environmentObject(runner)
+                .environmentObject(visibility)
+        }
+        .windowResizability(.contentSize)
+
+        Window("Carousel", id: "carousel") {
+            CarouselView()
+                .environmentObject(carousel)
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+/// Shared by the Window menu and the main window's footer so both routes into
+/// the two settings screens stay in step.
+struct SettingsWindowButtons: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Widgets…") { openWindow(id: "widgets") }
+            .keyboardShortcut("1", modifiers: [.command, .shift])
+        Button("Carousel…") { openWindow(id: "carousel") }
+            .keyboardShortcut("2", modifiers: [.command, .shift])
     }
 }
 
@@ -58,6 +96,7 @@ let registry: [AppEntry] = [
 
 struct ContentView: View {
     @EnvironmentObject var runner: Runner
+    @EnvironmentObject var visibility: WidgetVisibility
     @AppStorage("host") private var host = "10.0.4.20"
     @AppStorage("accessKey") private var accessKey = ""
     @AppStorage("mirror.show") private var showMirror = true
@@ -87,8 +126,21 @@ struct ContentView: View {
                     .transition(.opacity)
             }
             Divider()
-            ForEach(registry) { entry in
+            CarouselRow()
+            Divider()
+            ForEach(visibility.visible) { entry in
                 AppRow(entry: entry)
+            }
+            if visibility.visible.isEmpty {
+                Text("Every widget is hidden — tick some in the Widgets window.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Divider()
+            HStack {
+                SettingsWindowButtons()
+                    .buttonStyle(.link)
+                    .font(.callout)
+                Spacer()
             }
         }
         .padding(16)
@@ -128,6 +180,7 @@ struct LaunchAtLoginToggle: View {
 struct AppRow: View {
     let entry: AppEntry
     @EnvironmentObject var runner: Runner
+    @EnvironmentObject var carousel: Carousel
     @State private var showSettings = false
 
     var body: some View {
@@ -167,7 +220,12 @@ struct AppRow: View {
             }
             Toggle("", isOn: Binding(
                 get: { runner.isRunning(entry.id) },
-                set: { _ in runner.toggle(entry) }))
+                set: { _ in
+                    // Manual intent wins: the bar stays where you just put it
+                    // instead of being overwritten on the next rotation step.
+                    carousel.stop()
+                    runner.toggle(entry)
+                }))
                 .toggleStyle(.switch)
                 .labelsHidden()
         }
