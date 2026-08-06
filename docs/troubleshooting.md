@@ -20,7 +20,47 @@ the new build under a different name presents a fresh identity and gets a fresh
 prompt.
 
 `tccutil reset LocalNetwork <bundle-id>` does not help: this state lives in the
-networkextension store rather than the TCC database, and the command fails.
+networkextension store rather than the TCC database, and the command fails
+(verified again on 27.0 build 26A5388g — exit 70, "Failed to reset LocalNetwork
+approval status").
+
+The failure is silent and looks nothing like a permission problem. The bar is
+reachable, the switch in Settings is **on**, and the app still cannot connect,
+because that switch belongs to the *previous* binary. Confirm it from the log
+rather than guessing:
+
+```sh
+/usr/bin/log show --last 10m --style compact --process <pid> \
+  | grep -E "Local network prohibited|status 200"
+```
+
+A denial reads `unsatisfied (Local network prohibited)` followed by
+`NSURLError -1009`, and the `proc:` field carries the executable UUID the
+system is judging (`dwarfdump --uuid` on the installed binary to compare).
+
+### Re-prompting without a rebuild
+
+Installing to a **fresh path in /Applications** forces the prompt. No rebuild is
+needed — a plain `cp -R` of the same binary is enough, which is worth knowing
+because rebuilding to chase this wastes a lot of time:
+
+```sh
+cp -R "/Applications/Busy Control Centre.app" "/Applications/BusyBar Fresh.app"
+open -a "/Applications/BusyBar Fresh.app"      # grant the prompt when it appears
+osascript -e 'tell application "Busy Control Centre" to quit'
+rm -rf "/Applications/Busy Control Centre.app"
+mv "/Applications/BusyBar Fresh.app" "/Applications/Busy Control Centre.app"
+```
+
+The grant survives that final move, so the app keeps its proper name and its
+`UserDefaults` (host, access key, widget and carousel settings) — changing the
+bundle id would lose all of them.
+
+Observed 2026-08-06: both copies shared the identical executable UUID, yet the
+one at the original path was denied while the one at the new path prompted and
+was granted. So the bug is not that a new UUID needs a new grant — it is that a
+new UUID at a path with a stale record is denied *without ever prompting*, and a
+new path is what forces the system to ask.
 
 ### No prompt ever appears (macOS 26/27 betas)
 

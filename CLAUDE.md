@@ -73,9 +73,12 @@ keychain profile `busybar-notary`.
 - **Local Network permission binds to the executable's UUID**, so every rebuild
   is a new identity. Overwriting an installed app silently voids its grant and
   `tccutil reset LocalNetwork` does not work (the state lives in the
-  networkextension store, not the TCC db). Installing under a fresh name gets a
-  new prompt. Do not try to pin the UUID to dodge this — that is defeating the
-  consent mechanism, not fixing a bug.
+  networkextension store, not the TCC db). Do not try to pin the UUID to dodge
+  this — that is defeating the consent mechanism, not fixing a bug. The recovery
+  is to install to a fresh *path* in /Applications, grant the prompt, then move
+  the bundle over the real name; the grant survives the move and no rebuild is
+  needed. Full recipe and how to read the denial out of the log:
+  docs/troubleshooting.md.
 - On macOS 26/27 betas the prompt may never appear for any app; the known fix is
   deleting `/Library/Preferences/com.apple.networkextension.*.plist` from
   Recovery. See docs/troubleshooting.md.
