@@ -24,6 +24,10 @@ targets:
         com.apple.security.personal-information.location: true
         # Claude Limits: user picks ~/.claude via NSOpenPanel (bookmark-based)
         com.apple.security.files.user-selected.read-only: true
+        # Mail widget: AppleScript to Apple Mail for the unread count. The
+        # sanctioned entitlement, not a temporary-exception — the per-target
+        # Automation grant is still asked for at runtime.
+        com.apple.security.automation.apple-events: true
     info:
       path: Info.plist
       properties:
@@ -34,7 +38,8 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
         NSLocalNetworkUsageDescription: BusyBar talks to the BUSY Bar device over USB or Wi-Fi on your local network.
         NSBonjourServices: [_busybar._tcp]
-        NSLocationWhenInUseUsageDescription: Fills in your coordinates for the ISS widget.
+        NSLocationWhenInUseUsageDescription: Fills in your coordinates for the ISS and Weather widgets.
+        NSAppleEventsUsageDescription: BusyBar asks Apple Mail how many unread messages are in your inbox, to show the count on the bar.
         NSHumanReadableCopyright: © 2026 Aleksei Shabalin
         ITSAppUsesNonExemptEncryption: false
     settings:

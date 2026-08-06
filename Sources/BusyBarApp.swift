@@ -17,6 +17,11 @@ struct BusyBarApp: App {
                 .onAppear {
                     #if DEBUG
                     Carousel.selfCheck()
+                    Glyph.selfCheck()
+                    StocksApp.selfCheck()
+                    WeatherApp.selfCheck()
+                    YouTubeApp.selfCheck()
+                    MailApp.selfCheck()
                     #endif
                     LocalNetworkPermission.trigger()
                     runner.restore()
@@ -80,6 +85,18 @@ let registry: [AppEntry] = [
              symbol: "gauge.with.needle", make: { ClaudeApp() }, settings: { AnyView(ClaudeSettingsView()) }),
     AppEntry(id: "piss-stream", name: "pISS Stream", blurb: "Live ISS urine tank level, straight from NASA telemetry.",
              symbol: "toilet", make: { PissStreamApp() }),
+    AppEntry(id: "stocks", name: "Stocks", blurb: "Watchlist prices with the day's change; grey arrow when the market is shut.",
+             symbol: "chart.line.uptrend.xyaxis", make: { StocksApp() },
+             settings: { AnyView(StocksSettingsView()) }),
+    AppEntry(id: "weather", name: "Weather", blurb: "Condition icon, temperature, UV index and chance of rain.",
+             symbol: "cloud.sun", make: { WeatherApp() },
+             settings: { AnyView(WeatherSettingsView()) }),
+    AppEntry(id: "youtube", name: "YouTube", blurb: "Subscriber count for a channel, via your own API key.",
+             symbol: "play.rectangle", make: { YouTubeApp() },
+             settings: { AnyView(YouTubeSettingsView()) }),
+    AppEntry(id: "mail", name: "Mail", blurb: "Unread count from Apple Mail's inbox, or a small celebration.",
+             symbol: "envelope", make: { MailApp() },
+             settings: { AnyView(MailSettingsView()) }),
     AppEntry(id: "status", name: "Status", blurb: "Pin a banner on the bar until you switch it off.",
              symbol: "flag", make: { StatusApp() },
              settings: { AnyView(StatusSettingsView()) }, exclusive: false),

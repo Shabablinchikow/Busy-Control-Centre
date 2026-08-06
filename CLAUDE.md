@@ -15,6 +15,8 @@ Sources/
   BarClient.swift            device HTTP client, element builders, Frame → PNG
   WidgetVisibility.swift     which widgets the main list shows + Widgets window
   Carousel.swift             timed rotation through chosen widgets + its window
+  WebJSON.swift              fetchJSON for the widgets that read the open web
+  Glyphs.swift               "#" bitmaps → rect elements (arrows, weather icons)
   Banners.swift              device themes + BannerPicker
   MirrorView.swift           LED-matrix mirror of /api/screen
   LocalNetworkPermission.swift  Bonjour trigger for the TCC prompt
@@ -52,6 +54,10 @@ keychain profile `busybar-notary`.
   goes through `BarClient.session` with `httpMaximumConnectionsPerHost = 1`.
 - **Full-frame images beat many rects**: ~3.6 ms per rect vs a flat ~50 ms for one
   72×16 image, so animated widgets render into `Frame` and push a single PNG.
+  `Glyph` exists for the middle ground — a small bitmap drawn as rects — and it
+  merges horizontal runs, because an 8×8 icon as 64 single-pixel rects is ~230 ms.
+  It also emits a fixed number of element ids per glyph: elements persist by id,
+  so a 10-rect icon followed by a 6-rect one would leave four rects behind.
 - **Auth**: HTTP access key as `X-API-Token`, enforced over Wi-Fi only.
 
 ## Conventions
