@@ -115,6 +115,10 @@ struct ContentView: View {
             Text("USB is always 10.0.4.20 (no key needed). For Wi-Fi, enter the bar's IP and its HTTP access key (Settings → HTTP Access on the bar).")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
+                SettingsWindowButtons()
+                Spacer()
+            }
+            HStack {
                 LaunchAtLoginToggle()
                 Spacer()
                 Toggle("Mirror display", isOn: $showMirror)
@@ -134,13 +138,6 @@ struct ContentView: View {
             if visibility.visible.isEmpty {
                 Text("Every widget is hidden — tick some in the Widgets window.")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-            Divider()
-            HStack {
-                SettingsWindowButtons()
-                    .buttonStyle(.link)
-                    .font(.callout)
-                Spacer()
             }
         }
         .padding(16)
