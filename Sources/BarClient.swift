@@ -1,7 +1,14 @@
 import Foundation
 import CoreGraphics
+import os
 import ImageIO
 import UniformTypeIdentifiers
+
+/// Everything the app tells the device, and what it said back. Read it with
+///   log show --last 5m --predicate 'subsystem == "ru.shbbl.BusyBar"'
+/// which is the only way to see what a widget is doing once the app is installed
+/// — the bar itself cannot be reached from a sandboxed shell.
+let barLog = Logger(subsystem: "ru.shbbl.BusyBar", category: "bar")
 
 /// Thin client for the BUSY Bar HTTP API. Over USB the bar is always at
 /// 10.0.4.20; a host override targets a Wi-Fi bar or the emulator.
@@ -17,6 +24,13 @@ struct BarClient {
         c.waitsForConnectivity = false
         return URLSession(configuration: c)
     }()
+
+    /// **`withoutEscapingSlashes` is load-bearing.** `JSONSerialization` writes a
+    /// forward slash as `\/`, which is valid JSON that the bar's parser rejects
+    /// with HTTP 400 — so a widget showing "485km/h" or "NE 1m/s" had *every*
+    /// frame thrown away and sat there black, while the same text posted by
+    /// anything that does not escape slashes (curl, python) drew fine.
+    static let bodyOptions: JSONSerialization.WritingOptions = [.withoutEscapingSlashes]
 
     let base: URL
     /// HTTP access key (4–10 digit PIN, Settings → HTTP Access on the bar).
@@ -49,9 +63,17 @@ struct BarClient {
         if let ledNotificationColor { body["led_notification_color"] = ledNotificationColor }
         var req = request(base.appendingPathComponent("api/display/draw"), method: "POST")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: Self.bodyOptions)
         let (_, resp) = try await Self.session.data(for: req)
-        return (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        // 409 is routine (something outranks us); anything else that is not 200
+        // means the frame did not land, which on a cleared display is a black bar.
+        if code != 200 && code != 409 {
+            barLog.error("draw \(app, privacy: .public) \(elements.count) elements -> HTTP \(code)")
+        } else {
+            barLog.debug("draw \(app, privacy: .public) \(elements.count) elements -> \(code)")
+        }
+        return code
     }
 
     /// DELETE /api/display/draw?application_name=… — release the screen. Best effort.
@@ -88,7 +110,7 @@ struct BarClient {
     func restoreBusySnapshot(_ body: [String: Any]) async throws -> Int {
         var req = request(base.appendingPathComponent("api/busy/snapshot"), method: "PUT")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: Self.bodyOptions)
         let (_, resp) = try await Self.session.data(for: req)
         return (resp as? HTTPURLResponse)?.statusCode ?? 0
     }
@@ -133,7 +155,7 @@ struct BarClient {
         ]
         var req = request(base.appendingPathComponent("api/busy/snapshot"), method: "PUT")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: Self.bodyOptions)
         let (_, resp) = try await Self.session.data(for: req)
         return (resp as? HTTPURLResponse)?.statusCode ?? 0
     }
@@ -158,11 +180,33 @@ struct BarClient {
 
 func textEl(_ id: String, _ text: String, x: Int, y: Int, font: String = "normal",
             color: String = "#FFFFFFFF", align: String? = nil) -> [String: Any] {
-    var el: [String: Any] = ["id": id, "type": "text", "text": text,
+    var el: [String: Any] = ["id": id, "type": "text", "text": deviceSafe(text),
                              "x": x, "y": y, "font": font, "color": color]
     if let align { el["align"] = align }
     return el
 }
+
+/// Swaps out the handful of characters the bar refuses. One of them makes the
+/// *whole draw* fail with HTTP 400, which blanks an entire widget — measured:
+/// posting "↑↗→" is rejected, "°" is not.
+///
+/// Deliberately a small deny-list rather than an ASCII filter: channel names,
+/// track titles and place names are not ASCII, and the device draws Cyrillic
+/// perfectly well. Stripping everything non-ASCII cost the YouTube widget its
+/// channel name.
+func deviceSafe(_ s: String) -> String {
+    guard s.contains(where: { deviceFallback[$0] != nil }) else { return s }
+    return String(s.map { deviceFallback[$0] ?? String($0) }.joined())
+}
+
+/// Readable stand-ins for the characters the bar will not take. Arrows are the
+/// ones this app kept reaching for; the rest are the typographic characters that
+/// arrive in text copied from elsewhere.
+private let deviceFallback: [Character: String] = [
+    "↑": "+", "↓": "-", "→": ">", "←": "<", "↗": ">", "↘": ">", "↖": "<", "↙": "<",
+    "…": "..", "—": "-", "–": "-", "•": ".", "·": ".", "×": "x", "−": "-",
+    "“": "\"", "”": "\"", "‘": "'", "’": "'", "≈": "~",
+]
 
 func rectEl(_ id: String, x: Int, y: Int, w: Int, h: Int, color: String) -> [String: Any] {
     ["id": id, "type": "rectangle", "x": x, "y": y, "width": w, "height": h,

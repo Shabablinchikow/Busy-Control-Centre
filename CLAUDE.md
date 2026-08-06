@@ -16,7 +16,9 @@ Sources/
   WidgetVisibility.swift     which widgets the main list shows + Widgets window
   Carousel.swift             timed rotation through chosen widgets + its window
   WebJSON.swift              fetchJSON for the widgets that read the open web
-  Glyphs.swift               "#" bitmaps → rect elements (arrows, weather icons)
+  Glyphs.swift               "#" bitmaps → rect elements (weather icons, YT mark)
+  DeviceFont.swift           measured character advances for the device's fonts
+  Roll.swift                 odometer animation for numbers that change on screen
   Banners.swift              device themes + BannerPicker
   MirrorView.swift           LED-matrix mirror of /api/screen
   LocalNetworkPermission.swift  Bonjour trigger for the TCC prompt
@@ -59,6 +61,71 @@ keychain profile `busybar-notary`.
   It also emits a fixed number of element ids per glyph: elements persist by id,
   so a 10-rect icon followed by a 6-rect one would leave four rects behind.
 - **Auth**: HTTP access key as `X-API-Token`, enforced over Wi-Fi only.
+- **Never let `JSONSerialization` escape slashes.** It writes "/" as `\/`, which
+  is valid JSON that the bar rejects with **HTTP 400** — so a widget reading
+  "485km/h" or "NE 1m/s" had every frame thrown away and sat there black, while
+  the identical text posted by curl or python drew fine. `BarClient.bodyOptions`
+  carries `.withoutEscapingSlashes`; every request body must use it.
+- **A rejected draw is a black bar**, because `Runner.start` clears first. One bad
+  character in one element throws away the whole frame, and if the widget also
+  animates, the animation's draws keep landing — which looks like a bar showing
+  nothing but rolling digits. That symptom means "the frame is being rejected",
+  not "the animation is broken".
+- **Some characters are refused outright**: "↑↗→" gives HTTP 400, "°" and Cyrillic
+  do not. `deviceSafe` in `BarClient` swaps the known-bad ones on the way out.
+  It is a deny-list on purpose — channel names and track titles are not ASCII,
+  and filtering to ASCII cost the YouTube widget its (Cyrillic) channel name.
+- **100 elements per request, ~104 ids per app**; beyond that, HTTP 400. Measured.
+- **The fonts carry more than ASCII**: all eight arrows (↑↗→↘↓↙←↖) and °, all
+  measured. Nothing in the app draws a character as a bitmap — `Glyph` is for
+  pictures only (weather icons, the YouTube mark).
+- **Elements outlive the app.** Quitting kills the widget tasks without a clear,
+  so the bar keeps whatever was last drawn — including elements an animation was
+  mid-way through, which the widget's ordinary frame has no id for and can never
+  overwrite. `Runner.start` therefore clears the app's namespace before anything
+  else. Nothing is replayed over the top: a widget's first frame comes from
+  `WebCache`, which holds the *data* it fetched a moment ago rather than a
+  picture of it.
+- **The device fonts are proportional.** In `small` a digit advances 4px but "."
+  advances 2, "I" 2 and "M" 6, so `count * 4` is wrong for anything but digits —
+  it is what put the flight route's ">" on top of its origin. `DeviceFont` holds
+  the advances, measured from the firmware's own TTFs
+  (`assets/shared/fonts/ttf`) at the ppem `convert_all.sh` bakes them at: 16px
+  for all of them, except `extra_large`, which is `busy_regular_7px` at **32px**
+  — the 7px face doubled, hence its 2px-thick strokes and 14 rows of height.
+  Metrics only: the firmware is GPLv2 and this app is MIT, so no glyph data from
+  it can ship here. Re-measure with CoreText at those ppem values if the firmware
+  changes its fonts.
+- **Element coordinates may be negative** (the schema allows -4096…4095), which
+  is what makes `Roll` possible: a character can be told to sit half a line above
+  where it belongs and the display clips it. Nothing else clips, so the parts
+  that land in the 3-row gutter between the two text lines are covered with black
+  rects — and that gutter is why the throw is 3px and no more.
+- **Element ids are a budget.** `Roll` animates at most 4 characters (3 ids
+  each) and the weather icon's two layers are budgeted at exactly what their
+  busiest member needs (16 + 10), not a round number.
+- **Roll animates the device's own font**: it covers each changed character with
+  a black rect and redraws that one character as its own text element, which can
+  then be given a negative `y`. The number's own element is left alone. Its first
+  frame creates every element it will touch — cover, characters, masks, in that
+  order — because the bar paints elements in the order it first saw them. Text is
+  erased with `""`, rects by going `#00000000`. A reading whose characters change
+  width (a "1" is 3px, every other digit 4) re-lays out, so it is redrawn rather
+  than rolled.
+
+## Debugging what the bar is doing
+
+`barLog` (`os.Logger`, subsystem `ru.shbbl.BusyBar`) records every widget status
+line and every draw that does not return 200 or 409. This is the only way to see
+what an installed app is doing, since the bar cannot be reached from a sandboxed
+shell:
+
+```sh
+log show --last 5m --info --debug --predicate 'subsystem == "ru.shbbl.BusyBar"'
+```
+
+`draw weather 30 elements -> HTTP 400` is what found the slash-escaping bug after
+four wrong theories. When a widget misbehaves, read the log before theorising.
 
 ## Conventions
 

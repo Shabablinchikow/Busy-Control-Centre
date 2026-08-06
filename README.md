@@ -8,6 +8,12 @@ Everything talks to the device's local HTTP API. No cloud, no accounts, no
 third-party dependencies — SwiftUI and the system frameworks only.
 
 <p align="center">
+  <a href="https://github.com/Shabablinchikow/Busy-Control-Centre/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Shabablinchikow/Busy-Control-Centre?style=for-the-badge&label=Download%20for%20macOS&color=2f81f7" alt="Download the latest release">
+  </a>
+</p>
+
+<p align="center">
   <img src="docs/screenshot.png" alt="The main window: device address, the Widgets and Carousel buttons, a mirror of the bar showing the Stocks widget, and the widget list" width="620">
 </p>
 
@@ -19,11 +25,11 @@ third-party dependencies — SwiftUI and the system frameworks only.
 | **Nyan Cat** | Pop-tart cat, rainbow trail, twinkling stars |
 | **ISS Alert** | Quiet until the space station passes near you |
 | **Music** | Spectrum bars following the Music app, with track title |
-| **Flightradar** | Tracks one flight by number: route, altitude, speed |
+| **Flightradar** | Tracks one flight by number: flight number and type, speed, route with a progress bar, altitude |
 | **Claude Limits** | Live Claude Code usage bars with the Clawd mascot |
 | **pISS Stream** | ISS urine-tank level from NASA telemetry, à la [pISSStream](https://github.com/Jaennaet/pISSStream) |
-| **Stocks** | Watchlist prices and the day's change; the arrow greys out when that exchange is shut |
-| **Weather** | Condition icon, temperature, UV index and chance of rain |
+| **Stocks** | Watchlist: a full-height ticker with the price and the day's change; both grey out when that exchange is shut |
+| **Weather** | Two-tone condition icon, temperature, wind speed and direction, UV index and chance of rain |
 | **YouTube** | Subscriber count for a channel, using your own API key |
 | **Mail** | Unread count from Apple Mail's inbox, or a small celebration |
 | **Status** | Pin a banner on the bar until you switch it off |

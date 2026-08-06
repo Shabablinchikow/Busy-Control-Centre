@@ -18,6 +18,8 @@ struct BusyBarApp: App {
                     #if DEBUG
                     Carousel.selfCheck()
                     Glyph.selfCheck()
+                    Roll.selfCheck()
+                    FlightradarApp.selfCheck()
                     StocksApp.selfCheck()
                     WeatherApp.selfCheck()
                     YouTubeApp.selfCheck()

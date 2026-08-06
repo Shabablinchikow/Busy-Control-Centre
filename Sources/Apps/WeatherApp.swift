@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Condition icon, temperature, UV index and rain probability. Open-Meteo needs
-/// no key and answers all four in one `current=` block.
+/// Two-tone condition icon, temperature, wind, UV index and rain probability.
+/// Open-Meteo needs no key and answers all of it in one `current=` block.
 final class WeatherApp: MiniApp {
     let app = "weather"
 
@@ -10,7 +10,7 @@ final class WeatherApp: MiniApp {
 
     static let ink = "#FFFFFFFF"
     static let dim = "#8A8A8AFF"
-    static let iconTint = "#FFD37AFF"
+    static let windTint = "#7FD4FFFF"
 
     // Two 5px text lines, right-aligned at x=73 (the font's 1px right bearing),
     // with the 8x8 icon vertically centred at the left.
@@ -21,6 +21,10 @@ final class WeatherApp: MiniApp {
     static let iconY = 4
     /// Left edge of the text, clear of the icon.
     static let xText = 10
+    /// Ink rows of the two lines: the small font draws two rows below its y.
+    /// Wind sits on line 1 next to the icon: the font's own compass arrow, then
+    /// the speed, in one element.
+    static let windX = 10
 
     enum Units: String { case metric, imperial }
 
@@ -29,6 +33,8 @@ final class WeatherApp: MiniApp {
         var rainPct = 0
         var code = 0
         var isDay = true
+        /// km/h and the meteorological bearing the wind blows *from*.
+        var windKmh = 0.0, windDeg = 0.0
     }
 
     // MARK: - Main loop
@@ -42,12 +48,34 @@ final class WeatherApp: MiniApp {
         let interval = max(60, d.object(forKey: "wx.interval") as? Double ?? 600)
         let units = Units(rawValue: d.string(forKey: "wx.units") ?? "") ?? .metric
 
+        var shownTemp = "", shownWind = "", polled = false
         while !Task.isCancelled {
             do {
-                let c = try await fetch(lat: lat, lon: lon)
-                let code = try await client.draw(app: app, elements: Self.frame(c, units: units),
-                                                 priority: 60)
-                status(code == 409 ? "display busy" : Self.statusLine(c, units: units))
+                let c = try await fetch(lat: lat, lon: lon, fresh: polled)
+                polled = true
+                let els = Self.frame(c, units: units)
+                let temp = Self.fmtTemp(c, units), wind = Self.fmtWind(c, units)
+                var fields: [Roll.Field] = []
+                if !shownTemp.isEmpty, shownTemp != temp {
+                    fields.append(Roll.Field(id: "temp", from: shownTemp, to: temp,
+                                             anchor: .right(Self.xRight),
+                                             y: Self.yLine1 + DeviceFont.smallInkOffset, color: Self.ink))
+                }
+                if !shownWind.isEmpty, shownWind != wind {
+                    fields.append(Roll.Field(id: "windspd", from: shownWind, to: wind,
+                                             anchor: .left(Self.windX),
+                                             y: Self.yLine1 + DeviceFont.smallInkOffset, color: Self.windTint))
+                }
+                shownTemp = temp
+                shownWind = wind
+                if fields.isEmpty {
+                    let code = try await client.draw(app: app, elements: els, priority: 60)
+                    status(code == 409 ? "display busy" : Self.statusLine(c, units: units))
+                } else {
+                    await Roll.play(client: client, app: app, fields: fields,
+                                    priority: 60, then: els)
+                    status(Self.statusLine(c, units: units))
+                }
             } catch {
                 // Leave the last reading on the bar; weather does not go stale fast.
                 status("open-meteo: \(error.localizedDescription)")
@@ -59,23 +87,29 @@ final class WeatherApp: MiniApp {
 
     // MARK: - Data
 
-    func fetch(lat: Double, lon: Double) async throws -> Conditions {
+    /// `fresh: false` for the first fetch of a run, which takes whatever
+    /// `WebCache` still holds so a widget coming back draws at once instead of
+    /// sitting blank through a round trip.
+    func fetch(lat: Double, lon: Double, fresh: Bool) async throws -> Conditions {
         var comps = URLComponents(string: Self.template)!
         comps.queryItems = [
             URLQueryItem(name: "latitude", value: String(lat)),
             URLQueryItem(name: "longitude", value: String(lon)),
             URLQueryItem(name: "current",
-                         value: "temperature_2m,weather_code,is_day,uv_index,precipitation_probability"),
+                         value: "temperature_2m,weather_code,is_day,uv_index,"
+                              + "precipitation_probability,wind_speed_10m,wind_direction_10m"),
             URLQueryItem(name: "timezone", value: "auto"),
         ]
         guard let url = comps.url else { throw WebError.bad }
-        let obj = try await fetchJSON(url, userAgent: Self.userAgent)
+        let obj = try await fetchJSON(url, userAgent: Self.userAgent, fresh: fresh)
         guard let cur = obj["current"] as? [String: Any] else { throw WebError.bad }
         return Conditions(tempC: Self.num(cur["temperature_2m"]) ?? 0,
                           uv: Self.num(cur["uv_index"]) ?? 0,
                           rainPct: Int(Self.num(cur["precipitation_probability"]) ?? 0),
                           code: Int(Self.num(cur["weather_code"]) ?? 0),
-                          isDay: (Self.num(cur["is_day"]) ?? 1) != 0)
+                          isDay: (Self.num(cur["is_day"]) ?? 1) != 0,
+                          windKmh: Self.num(cur["wind_speed_10m"]) ?? 0,
+                          windDeg: Self.num(cur["wind_direction_10m"]) ?? 0)
     }
 
     // MARK: - Pure helpers
@@ -86,9 +120,9 @@ final class WeatherApp: MiniApp {
         units == .imperial ? c.tempC * 9 / 5 + 32 : c.tempC
     }
 
-    /// "C"/"F" rather than a degree sign: every other widget sticks to ASCII the
-    /// device font is known to carry (Flightradar's m/ft/kt), and a missing glyph
-    /// shows as a box.
+    /// "C"/"F" with no degree sign: the bar renders ° perfectly well but rejects
+    /// the draw that carries it, because `JSONSerialization` sends raw UTF-8 and
+    /// its parser takes ASCII only. One ° blanked this whole widget.
     static func fmtTemp(_ c: Conditions, _ units: Units) -> String {
         "\(Int(temp(c, units).rounded()))\(units == .imperial ? "F" : "C")"
     }
@@ -101,8 +135,30 @@ final class WeatherApp: MiniApp {
 
     static func fmtRain(_ pct: Int) -> String { "rain: \(pct)%" }
 
+    /// m/s in metric, mph in imperial. Open-Meteo answers in km/h either way, so
+    /// the conversion happens here and a cached reading survives a unit switch.
+    static func windSpeed(_ c: Conditions, _ units: Units) -> Double {
+        units == .imperial ? c.windKmh * 0.621371 : c.windKmh / 3.6
+    }
+
+    static var windUnit: (Units) -> String { { $0 == .imperial ? "mph" : "m/s" } }
+
+    /// Direction, speed and unit in one element: the font is proportional, so
+    /// anything drawn beside the number would have to be repositioned every time
+    /// the reading gained or lost a digit.
+    ///
+    /// Spelled out rather than an arrow — the device rejects the whole draw for
+    /// any character above U+00FF, which is what blanked this widget. +180
+    /// because open-meteo reports the bearing the wind comes *from*, and naming
+    /// where it is going needs no explaining.
+    static func fmtWind(_ c: Conditions, _ units: Units) -> String {
+        "\(DeviceFont.point(bearing: c.windDeg + 180)) "
+            + "\(Int(windSpeed(c, units).rounded()))\(windUnit(units))"
+    }
+
     static func statusLine(_ c: Conditions, units: Units) -> String {
         "\(fmtTemp(c, units))  \(fmtUV(c.uv))  \(fmtRain(c.rainPct))"
+            + "  wind \(fmtWind(c, units))"
     }
 
     static func num(_ v: Any?) -> Double? {
@@ -114,8 +170,14 @@ final class WeatherApp: MiniApp {
     // MARK: - Frame
 
     static func frame(_ c: Conditions, units: Units) -> [[String: Any]] {
-        var els = Glyph.els("wx", Glyph.weatherIcon(code: c.code, isDay: c.isDay),
-                            x: iconX, y: iconY, color: iconTint, slots: Glyph.iconSlots)
+        // Two passes: the cloud (or sun, or moon), then whatever falls out of it.
+        let icon = Glyph.weatherIcon(code: c.code, isDay: c.isDay)
+        var els = Glyph.els("wx", icon.base, x: iconX, y: iconY,
+                            color: icon.baseColor, slots: Glyph.iconSlots)
+        els += Glyph.els("wx2", icon.overlay, x: iconX, y: iconY,
+                         color: icon.overlayColor, slots: Glyph.overlaySlots)
+        els.append(textEl("windspd", fmtWind(c, units), x: windX, y: yLine1,
+                          font: "small", color: windTint, align: "top_left"))
         els.append(textEl("temp", fmtTemp(c, units), x: xRight, y: yLine1,
                           font: "small", color: ink, align: "top_right"))
         els.append(textEl("uv", fmtUV(c.uv), x: xText, y: yLine2,
@@ -136,18 +198,38 @@ final class WeatherApp: MiniApp {
         assert(fmtRain(0) == "rain: 0%" && fmtRain(100) == "rain: 100%", "labelled rain")
         // Line 2 is "uv N" from x=10 and the rain text flush right; at the widest
         // both must still fit the 72px display without colliding.
-        assert(xText + fmtUV(11).count * 4 < 72 - fmtRain(100).count * 4,
+        assert(xText + DeviceFont.small.width(fmtUV(11))
+                     < 72 - DeviceFont.small.width(fmtRain(100)),
                "the widest uv and rain labels do not overlap")
 
+        // Line 1 carries the wind arrow, the speed, and the temperature flush
+        // right; a three-digit gust and a negative temperature must still fit.
+        c.windKmh = 120
+        assert(fmtWind(c, .metric).hasSuffix("33m/s") && fmtWind(c, .imperial).hasSuffix("75mph"),
+               "m/s in metric, mph in imperial, unit shown either way")
+        assert(fmtWind(c, .metric).hasPrefix(DeviceFont.point(bearing: c.windDeg + 180)),
+               "and the compass point leads, naming where the wind is going")
+        assert(fmtWind(c, .metric).allSatisfy { $0.isASCII },
+               "nothing above U+00FF, or the device rejects the whole frame")
+        var cold = c
+        cold.tempC = -12.4
+        assert(windX + DeviceFont.small.width(fmtWind(c, .metric))
+                     < 72 - DeviceFont.small.width(fmtTemp(cold, .metric)),
+               "the widest wind reading clears the widest temperature")
+        // Named for where it is going, so it agrees with the arrow the frame draws.
+        assert(Self.frame(c, units: .metric).allSatisfy { el in
+            (el["text"] as? String ?? "").allSatisfy { $0.unicodeScalars.allSatisfy { $0.value <= 0xFF } }
+        }, "every string in the frame is something the device will accept")
+
         // Code mapping, including the day/night split on clear skies.
-        assert(Glyph.weatherIcon(code: 0, isDay: true) == Glyph.sun, "clear day")
-        assert(Glyph.weatherIcon(code: 0, isDay: false) == Glyph.moon, "clear night")
-        assert(Glyph.weatherIcon(code: 3, isDay: true) == Glyph.cloud, "overcast")
-        assert(Glyph.weatherIcon(code: 48, isDay: true) == Glyph.fog, "fog")
-        assert(Glyph.weatherIcon(code: 71, isDay: true) == Glyph.snow, "snow")
-        assert(Glyph.weatherIcon(code: 99, isDay: true) == Glyph.storm, "thunderstorm")
-        assert(Glyph.weatherIcon(code: 61, isDay: true) == Glyph.rain, "rain")
-        assert(Glyph.weatherIcon(code: 81, isDay: true) == Glyph.rain, "showers")
+        assert(Glyph.weatherIcon(code: 0, isDay: true).base == Glyph.sun, "clear day")
+        assert(Glyph.weatherIcon(code: 0, isDay: false).base == Glyph.moon, "clear night")
+        assert(Glyph.weatherIcon(code: 3, isDay: true).base == Glyph.cloud, "overcast")
+        assert(Glyph.weatherIcon(code: 48, isDay: true).overlay == Glyph.fogLines, "fog")
+        assert(Glyph.weatherIcon(code: 71, isDay: true).overlay == Glyph.flakes, "snow")
+        assert(Glyph.weatherIcon(code: 99, isDay: true).overlay == Glyph.bolt, "thunderstorm")
+        assert(Glyph.weatherIcon(code: 61, isDay: true).overlay == Glyph.drops, "rain")
+        assert(Glyph.weatherIcon(code: 81, isDay: true).overlay == Glyph.drops, "showers")
 
         // Below-zero temperatures must not lose their sign.
         c.tempC = -4.4

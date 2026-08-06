@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// A watchlist on the bar: symbol and price on the top line, an arrow and the
-/// day's change underneath. Quotes come from Yahoo's chart endpoint, which needs
-/// no key. Note it is unofficial — a widget that stops working is the first thing
-/// to suspect if Yahoo changes it.
+/// A watchlist on the bar: the ticker at full height on the left, the price and
+/// the day's change stacked on the right. Quotes come from Yahoo's chart
+/// endpoint, which needs no key. Note it is unofficial — a widget that stops
+/// working is the first thing to suspect if Yahoo changes it.
 final class StocksApp: MiniApp {
     let app = "stocks"
 
@@ -24,10 +24,16 @@ final class StocksApp: MiniApp {
     static let yLine1 = 0
     static let yLine2 = 8
     static let xRight = 73
-    /// The 5px arrow, aligned with line 2's ink rows (10-14).
-    static let arrowY = 10
-    /// Advance per character in the device's 5px font.
-    static let charW = 4
+    /// The ticker is vertically centred on the whole 16px height, so it reads as
+    /// the headline and the price column as the detail.
+    static let symbolY = 8
+    /// Gap between the ticker and the price column.
+    static let gap = 2
+
+    /// Fonts the ticker can use, tallest first. `extra_large` is the 7px face at
+    /// double size — 14 rows of 2px-thick strokes, the full height of the bar —
+    /// and `bold` keeps the thick strokes when only 7 rows will fit.
+    static let symbolFonts: [DeviceFont] = [.extraLarge, .large, .bold, .normal, .small]
 
     struct Quote {
         var symbol = "", price = 0.0, prevClose = 0.0
@@ -45,7 +51,9 @@ final class StocksApp: MiniApp {
         // Refetched per symbol only when its own entry has gone stale, so one
         // loop drives both the flipping and the polling.
         var cache: [String: (quote: Quote, at: Double)] = [:]
-        var tick = 0
+        var tick = 0, polled = false
+        /// What the bar is showing, so a moved number can roll to the new one.
+        var shown: (symbol: String, price: String, pct: String)?
 
         while !Task.isCancelled {
             guard !symbols.isEmpty else {
@@ -58,7 +66,8 @@ final class StocksApp: MiniApp {
 
             if cache[symbol].map({ now - $0.at > refresh }) ?? true {
                 do {
-                    cache[symbol] = (try await fetchQuote(symbol), now)
+                    cache[symbol] = (try await fetchQuote(symbol, fresh: polled), now)
+                    polled = true
                 } catch {
                     // Keep whatever is on the bar; a stale price beats a blank.
                     status("\(symbol): \(Self.describe(error))")
@@ -66,12 +75,38 @@ final class StocksApp: MiniApp {
             }
 
             if let q = cache[symbol]?.quote {
-                do {
-                    let code = try await client.draw(app: app, elements: Self.frame(q),
-                                                     priority: 60)
-                    status(code == 409 ? "display busy" : Self.statusLine(q))
-                } catch {
-                    status("draw error: \(error.localizedDescription)")
+                let priceText = Self.fmtPrice(q.price)
+                let pctText = Self.fmtPct(Self.pctChange(price: q.price, prevClose: q.prevClose))
+                let els = Self.frame(q)
+                // Only the same symbol's own numbers roll: flipping AAPL to MSFT
+                // is a new subject, not a value that moved.
+                var fields: [Roll.Field] = []
+                if shown?.symbol == symbol, let was = shown {
+                    if was.price != priceText {
+                        fields.append(Roll.Field(id: "price", from: was.price, to: priceText,
+                                                 anchor: .right(Self.xRight),
+                                                 y: Self.yLine1 + DeviceFont.smallInkOffset,
+                                                 color: Self.ink))
+                    }
+                    if was.pct != pctText {
+                        fields.append(Roll.Field(id: "pct", from: was.pct, to: pctText,
+                                                 anchor: .right(Self.xRight),
+                                                 y: Self.yLine2 + DeviceFont.smallInkOffset,
+                                                 color: Self.color(q)))
+                    }
+                }
+                shown = (symbol, priceText, pctText)
+                if fields.isEmpty {
+                    do {
+                        let code = try await client.draw(app: app, elements: els, priority: 60)
+                        status(code == 409 ? "display busy" : Self.statusLine(q))
+                    } catch {
+                        status("draw error: \(error.localizedDescription)")
+                    }
+                } else {
+                    await Roll.play(client: client, app: app, fields: fields,
+                                    priority: 60, then: els)
+                    status(Self.statusLine(q))
                 }
             }
 
@@ -83,12 +118,14 @@ final class StocksApp: MiniApp {
 
     // MARK: - Data
 
-    func fetchQuote(_ symbol: String) async throws -> Quote {
+    /// `fresh: false` for the first quote of a run: `WebCache` still has the
+    /// last answer, so a widget coming back draws at once.
+    func fetchQuote(_ symbol: String, fresh: Bool) async throws -> Quote {
         let enc = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
         guard let url = URL(string: String(format: Self.quoteTemplate, enc)) else {
             throw WebError.bad
         }
-        let obj = try await fetchJSON(url, userAgent: Self.userAgent)
+        let obj = try await fetchJSON(url, userAgent: Self.userAgent, fresh: fresh)
         guard let result = ((obj["chart"] as? [String: Any])?["result"] as? [[String: Any]])?.first,
               let meta = result["meta"] as? [String: Any],
               let price = Self.num(meta["regularMarketPrice"]) else { throw WebError.bad }
@@ -127,15 +164,27 @@ final class StocksApp: MiniApp {
         String(format: v >= 1000 ? "%.1f" : "%.2f", v)
     }
 
-    /// The arrow carries the direction, so the number itself is unsigned.
+    /// Sign and number in one element. The font does carry an up arrow, but at
+    /// five pixels tall its head and shaft merge into something that reads as a
+    /// plus, so "+" and "-" — which is what it looked like anyway — say it
+    /// plainly. Direction is also in the colour.
+    ///
+    /// One decimal, not two: the second one cost 4px, and 4px is the difference
+    /// between a four-letter ticker in the 14-row face and in the 11-row one.
     static func fmtPct(_ pct: Double) -> String {
-        String(format: "%.2f%%", abs(pct))
+        String(format: "%@%.1f%%", pct < 0 ? "-" : "+", abs(pct))
     }
 
-    /// Left edge of the arrow, so it sits just clear of the right-aligned
-    /// percentage underneath the price. Right-aligned text ends flush at x=72.
-    static func arrowX(pct text: String) -> Int {
-        max(0, 72 - text.count * charW - 2 - 5)
+    /// Width the price column needs: the price above, the arrow and percentage
+    /// below, whichever is wider.
+    static func rightWidth(price: String, pct: String) -> Int {
+        max(DeviceFont.small.width(price), DeviceFont.small.width(pct))
+    }
+
+    /// The tallest font the ticker fits in without eating into the price column.
+    static func symbolFont(_ symbol: String, price: String, pct: String) -> DeviceFont {
+        let budget = 72 - rightWidth(price: price, pct: pct) - gap
+        return symbolFonts.first { $0.width(symbol) <= budget } ?? .small
     }
 
     static func color(_ q: Quote) -> String {
@@ -146,8 +195,7 @@ final class StocksApp: MiniApp {
 
     static func statusLine(_ q: Quote) -> String {
         let pct = pctChange(price: q.price, prevClose: q.prevClose)
-        let sign = pct < 0 ? "−" : "+"
-        return "\(q.symbol)  \(fmtPrice(q.price))  \(sign)\(fmtPct(pct))"
+        return "\(q.symbol)  \(fmtPrice(q.price))  \(fmtPct(pct))"
             + (q.marketOpen ? "" : "  (closed)")
     }
 
@@ -171,18 +219,18 @@ final class StocksApp: MiniApp {
     static func frame(_ q: Quote) -> [[String: Any]] {
         let pct = pctChange(price: q.price, prevClose: q.prevClose)
         let tint = color(q)
+        let priceText = fmtPrice(q.price), pctText = fmtPct(pct)
         var els: [[String: Any]] = [
-            textEl("sym", q.symbol, x: 0, y: yLine1, font: "small",
-                   color: ink, align: "top_left"),
-            textEl("price", fmtPrice(q.price), x: xRight, y: yLine1, font: "small",
+            // Full height on the left, in the largest font the price column can
+            // spare — a four-letter ticker gets the 2px-thick 14-row face.
+            textEl("sym", q.symbol, x: 0, y: symbolY,
+                   font: symbolFont(q.symbol, price: priceText, pct: pctText).api,
+                   color: ink, align: "mid_left"),
+            textEl("price", priceText, x: xRight, y: yLine1, font: "small",
                    color: ink, align: "top_right"),
         ]
-        // Arrow and percentage sit at the right, under the price. The grey arrow
-        // is the closed-market signal, so nothing else marks it.
-        let pctText = fmtPct(pct)
-        els += Glyph.els("arrow", pct < 0 ? Glyph.arrowDown : Glyph.arrowUp,
-                         x: arrowX(pct: pctText), y: arrowY, color: tint,
-                         slots: Glyph.arrowSlots)
+        // Arrow and percentage are one right-aligned element under the price.
+        // Grey is the closed-market signal, so nothing else marks it.
         els.append(textEl("pct", pctText, x: xRight, y: yLine2, font: "small",
                           color: tint, align: "top_right"))
         return els
@@ -197,7 +245,8 @@ final class StocksApp: MiniApp {
         // 312.24 against a 311.00 close is +0.40%.
         let pct = pctChange(price: 312.24, prevClose: 311.0)
         assert(abs(pct - 0.3987) < 0.001, "day change percentage")
-        assert(fmtPct(pct) == "0.40%", "unsigned, two decimals")
+        assert(fmtPct(pct) == "+0.4%", "signed, one decimal")
+        assert(fmtPct(-12.345) == "-12.3%", "and the sign is a sign")
         assert(pctChange(price: 10, prevClose: 0) == 0, "a zero close cannot divide")
 
         // The real window from the endpoint: 1786023000...1786046400.
@@ -214,12 +263,21 @@ final class StocksApp: MiniApp {
         assert(fmtPrice(312.244) == "312.24" && fmtPrice(1234.56) == "1234.6",
                "four significant-ish digits so wide prices still fit")
 
-        // The arrow tracks the width of the percentage it precedes.
-        assert(arrowX(pct: "0.40%") == 45, "5 characters leaves the arrow at 45")
-        assert(arrowX(pct: "12.34%") < arrowX(pct: "0.40%"),
-               "a wider percentage pushes the arrow left")
-        assert(arrowX(pct: String(repeating: "9", count: 30)) == 0,
-               "an absurd percentage clamps instead of going negative")
+        // The ticker takes the tallest font that leaves the price column intact.
+        assert(symbolFont("F", price: "312.24", pct: fmtPct(0.4)) == .extraLarge,
+               "a one-letter ticker can be as tall as the bar")
+        assert(symbolFont("AAPL", price: "312.24", pct: fmtPct(0.4)) == .extraLarge,
+               "and so can four letters — what the second decimal was spent on")
+        assert(symbolFont("MSFT", price: "312.24", pct: fmtPct(0.4)) == .large,
+               "a wider four-letter ticker steps down")
+        assert(symbolFont(String(repeating: "X", count: 14), price: "9.99", pct: fmtPct(0.4)) == .small,
+               "an absurd ticker falls back to the small font rather than overflowing")
+        // Whatever font is chosen, ticker and price column must not overlap.
+        for sym in ["F", "AAPL", "MSFT", "^GSPC", "BRK-B"] {
+            let f = symbolFont(sym, price: "312.24", pct: fmtPct(-12.3))
+            assert(f.width(sym) + gap + rightWidth(price: "312.24", pct: fmtPct(-12.3)) <= 72,
+                   "\(sym) in \(f.api) still clears the price")
+        }
     }
     #endif
 }

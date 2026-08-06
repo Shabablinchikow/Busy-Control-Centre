@@ -28,9 +28,11 @@ final class MailApp: MiniApp {
     /// to say here, so it sits on the icon's centreline instead of hanging off
     /// the top or bottom edge. Ink lands on rows 6-10 of the 16.
     static let yText = 4
-    static let charW = 4
 
-    /// 8x8, a closed envelope.
+    /// 8x8, a closed envelope. Its own slot count rather than the weather
+    /// icons': the flap costs 4 runs on one row, and element ids are the budget.
+    static let envelopeSlots = 17
+
     static let envelope = ["########",
                            "##    ##",
                            "# #  # #",
@@ -133,7 +135,7 @@ final class MailApp: MiniApp {
     /// emitted different ids would leave each other's leftovers on the bar.
     static func frame(_ count: Int) -> [[String: Any]] {
         Glyph.els("env", envelope, x: iconX, y: iconY,
-                  color: isZero(count) ? dim : alert, slots: Glyph.iconSlots)
+                  color: isZero(count) ? dim : alert, slots: envelopeSlots)
             + [textEl("line", text(count), x: xText, y: yText, font: "small",
                       color: isZero(count) ? dim : ink, align: "top_left")]
     }
@@ -151,13 +153,13 @@ final class MailApp: MiniApp {
                "zero and non-zero frames cover the same element ids")
         assert(frame(0).count == frame(99999).count,
                "and the same element count, whatever the number")
-        assert(Glyph.runs(envelope).count <= Glyph.iconSlots, "the envelope fits its slots")
+        assert(Glyph.runs(envelope).count == envelopeSlots, "the envelope fits its slots exactly")
 
         // The text starts clear of the icon and stays inside the display.
         assert(xText >= 8, "text starts clear of the 8px icon")
         assert(text(0) == "ZERO INBOX =)" && text(1) == "1 unread", "both messages")
-        assert(xText + text(0).count * charW <= 72, "the zero-inbox message fits")
-        assert(xText + text(9999).count * charW <= 72, "a four-digit count still fits")
+        assert(xText + DeviceFont.small.width(text(0)) <= 72, "the zero-inbox message fits")
+        assert(xText + DeviceFont.small.width(text(9999)) <= 72, "a four-digit count still fits")
     }
     #endif
 }

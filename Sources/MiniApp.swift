@@ -76,7 +76,18 @@ final class Runner: ObservableObject {
         persist()
         status[id] = "starting…"
         tasks[id] = Task.detached {
+            // Always start from an empty display of our own. Elements persist on
+            // the device by id until something overwrites them, and quitting the
+            // app kills these tasks without a clear — so a widget that was
+            // mid-animation leaves elements its ordinary frame has no id for and
+            // can never overwrite.
+            //
+            // Nothing is drawn over the top of it either: the widget's own first
+            // frame arrives immediately, because `WebCache` still holds the data
+            // it fetched a moment ago.
+            await client.clear(app: id)
             await app.run(client: client) { msg in
+                barLog.info("\(id, privacy: .public): \(msg, privacy: .public)")
                 Task { @MainActor in Self.shared?.status[id] = msg }
             }
             await MainActor.run {

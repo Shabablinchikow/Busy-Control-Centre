@@ -20,22 +20,43 @@ final class PissStreamApp: MiniApp {
     /// No TIME_000001 tick for this long means the telemetry link is down.
     static let staleAfter = 30.0
 
-    static let fill = "#FFD60AFF", fillDim = "#7A6605FF"
+    static let fill = "#FFD60AFF"
     static let outline = "#5A5A50FF", label = "#A0A090FF"
-    static let bright = "#F0F0DCFF", dim = "#6C6C63FF", los = "#C06000FF"
+    static let bright = "#F0F0DCFF", dim = "#6C6C63FF", los = "#FF3B30FF"
+
+    /// Ink row of the "LOS" tag: the gauge owns rows 8-15, so 5 rows of ink
+    /// starting at 9 sit centred between its borders. `textEl` is anchored two
+    /// rows above its ink in the small font.
+    static let losY = 7
+    /// The percentage is right-aligned one column past the display so its ink
+    /// lands flush; its ink starts two rows below the nominal y.
+    static let pctRight = 73, pctInkY = 2
 
     func run(client: BarClient, status: @escaping @Sendable (String) -> Void) async {
         let tank = Telemetry()
         let feed = Task { await Self.feed(tank) }
         status("connecting to ISS…")
 
-        var lastKey = "", lastDraw = Date.distantPast, lastStatus = ""
+        var lastKey = "", lastDraw = Date.distantPast, lastStatus = "", shown = ""
         while !Task.isCancelled {
             let s = await tank.snapshot()
             // Redraw on change, and at least every ~10s so the bar keeps the frame.
             let key = "\(s.percent ?? -1)|\(s.stale)"
             if key != lastKey || Date().timeIntervalSince(lastDraw) > 9 {
-                _ = try? await client.draw(app: app, elements: build(s))  // 409 = bar busy
+                let els = build(s)
+                let text = Self.pctText(s)
+                if !shown.isEmpty, shown != text {
+                    // Rolls the digits that moved, then hands the reading back to
+                    // the text element in the same frame the rects retire.
+                    await Roll.play(client: client, app: app, fields: [
+                        Roll.Field(id: "pct", from: shown, to: text,
+                                   anchor: .right(Self.pctRight), y: Self.pctInkY,
+                                   color: Self.lost(s) ? Self.dim : Self.bright),
+                    ], then: els)
+                } else {
+                    _ = try? await client.draw(app: app, elements: els)  // 409 = bar busy
+                }
+                shown = text
                 lastKey = key
                 lastDraw = Date()
             }
@@ -60,15 +81,22 @@ final class PissStreamApp: MiniApp {
 
     // MARK: - Display
 
+    static func lost(_ s: Telemetry.Snapshot) -> Bool { s.percent != nil && s.stale }
+
+    static func pctText(_ s: Telemetry.Snapshot) -> String {
+        s.percent.map { String(format: "%.1f%%", $0) } ?? "--%"
+    }
+
     /// Label and reading on the top line, a full-width tank gauge on the bottom.
-    /// Loss of signal dims the reading and tags it "LOS", keeping the last value.
+    /// Loss of signal dims the reading and tags it "LOS" in red, keeping the last
+    /// value. The gauge itself is left alone: its colour is the tank level, not
+    /// the link state, and dimming it read as the level having dropped.
     func build(_ s: Telemetry.Snapshot) -> [[String: Any]] {
         var els = [textEl("label", "ISS URINE", x: 0, y: 0, font: "small",
                           color: Self.label, align: "top_left")]
 
-        let lost = s.percent != nil && s.stale
-        let text = s.percent.map { String(format: "%.1f%%", $0) } ?? "--%"
-        els.append(textEl("pct", text, x: 73, y: 0, font: "small",
+        let lost = Self.lost(s)
+        els.append(textEl("pct", Self.pctText(s), x: Self.pctRight, y: 0, font: "small",
                           color: lost ? Self.dim : Self.bright, align: "top_right"))
 
         els.append(rectEl("g_top", x: 0, y: 8, w: 72, h: 1, color: Self.outline))
@@ -78,14 +106,13 @@ final class PissStreamApp: MiniApp {
         if let p = s.percent {
             let w = Int((min(100, max(0, p)) / 100 * 70).rounded())
             if w > 0 {
-                els.append(rectEl("fill", x: 1, y: 9, w: w, h: 6,
-                                  color: lost ? Self.fillDim : Self.fill))
+                els.append(rectEl("fill", x: 1, y: 9, w: w, h: 6, color: Self.fill))
             }
         }
         // Always sent, drawn after the fill so it overlays the gauge. Elements
         // persist on the device by id, so omitting it after LOS ends would
         // leave a stale "LOS" on screen — empty text is the eraser.
-        els.append(textEl("los", lost ? "LOS" : "", x: 36, y: 9, font: "small",
+        els.append(textEl("los", lost ? "LOS" : "", x: 36, y: Self.losY, font: "small",
                           color: Self.los, align: "top_mid"))
         return els
     }
