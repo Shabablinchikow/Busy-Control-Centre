@@ -22,6 +22,17 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+    # Secrets are lifted to job level because the `secrets` context is not
+    # available in a step's `if`, while job-level `env` is.
+    env:
+      TEAM: ${{ secrets.MACOS_DEVELOPMENT_TEAM }}
+      CERT: ${{ secrets.MACOS_CERTIFICATE }}
+      CERT_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+      IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+      NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+      APP: build/Build/Products/Release/Busy Control Centre.app
+
     steps:
       - uses: actions/checkout@v4
 
@@ -29,9 +40,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Set team id
-        if: ${{ secrets.MACOS_DEVELOPMENT_TEAM != '' }}
-        env:
-          TEAM: ${{ secrets.MACOS_DEVELOPMENT_TEAM }}
+        if: env.TEAM != ''
         run: |
           /usr/bin/sed -i '' "s/DEVELOPMENT_TEAM: .*/DEVELOPMENT_TEAM: $TEAM/" project.yml
 
@@ -46,47 +55,32 @@ jobs:
             build
 
       - name: Import signing certificate
-        if: ${{ secrets.MACOS_CERTIFICATE != '' }}
-        env:
-          CERT: ${{ secrets.MACOS_CERTIFICATE }}
-          CERT_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        if: env.CERT != ''
         run: |
           echo "$CERT" | base64 --decode > /tmp/cert.p12
           security create-keychain -p runner build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p runner build.keychain
-          security import /tmp/cert.p12 -k build.keychain -P "$CERT_PWD" \
-            -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k runner build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CERT_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k runner build.keychain
           rm -f /tmp/cert.p12
 
       - name: Sign
-        if: ${{ secrets.MACOS_SIGNING_IDENTITY != '' }}
-        env:
-          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        if: env.IDENTITY != ''
         run: |
-          APP="build/Build/Products/Release/Busy Control Centre.app"
           codesign --force --deep --options runtime --timestamp \
-            --entitlements BusyBar.entitlements \
-            --sign "$IDENTITY" "$APP"
+            --entitlements BusyBar.entitlements --sign "$IDENTITY" "$APP"
           codesign --verify --strict "$APP"
 
       - name: Package
         run: |
-          APP="build/Build/Products/Release/Busy Control Centre.app"
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist")
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           ditto -c -k --keepParent "$APP" "Busy-Control-Centre-$VERSION.zip"
 
       - name: Notarise and staple
-        if: ${{ secrets.NOTARY_APPLE_ID != '' }}
-        env:
-          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-          TEAM: ${{ secrets.MACOS_DEVELOPMENT_TEAM }}
+        if: env.NOTARY_APPLE_ID != ''
         run: |
-          APP="build/Build/Products/Release/Busy Control Centre.app"
           xcrun notarytool submit "Busy-Control-Centre-$VERSION.zip" \
             --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_PASSWORD" \
             --team-id "$TEAM" --wait
