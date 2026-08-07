@@ -81,6 +81,11 @@ enum Proto {
                     for position in fields(event.bytes) where position.number == 1 {
                         return SwitchPosition(rawValue: Int(position.varint))
                     }
+                    // proto3 leaves a zero out of the wire entirely, so a switch
+                    // event with no position field is the first enum value —
+                    // BUSY. Without this, flicking to Busy looked like nothing
+                    // happening at all.
+                    return .busy
                 }
             }
         }

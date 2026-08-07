@@ -97,11 +97,6 @@ struct BarClient {
             barLog.debug("draw \(app, privacy: .public) \(elements.count) elements -> \(code)")
         }
         await BarState.shared.note(draw: code)
-        if code == 409 {
-            // Refused, so a session is running. Stopping is not enough: whatever
-            // we drew last would sit on top of it until something removes it.
-            await clear(app: app)
-        }
         return code
     }
 
@@ -242,7 +237,11 @@ final class BarState: ObservableObject {
     static let mayOverride: Set<String> = ["on-call"]
 
     @Published private(set) var position = SwitchPosition.off
-    /// The canvas refused the last draw — a session is running.
+    /// The canvas refused the last draw — a session is running, and it owns the
+    /// screen outright, so nothing of ours is showing anyway. Deliberately not
+    /// followed by a clear: a widget that redraws on a slow cadence (pISS holds
+    /// its frame for nine seconds) would be wiped by one transient refusal and
+    /// leave the bar black until its next turn.
     @Published private(set) var refused = false
 
     /// The bar is showing something of its own.

@@ -40,9 +40,10 @@ final class PissStreamApp: MiniApp {
         var lastKey = "", lastDraw = Date.distantPast, lastStatus = "", shown = ""
         while !Task.isCancelled {
             let s = await tank.snapshot()
-            // Redraw on change, and at least every ~10s so the bar keeps the frame.
+            // Redraw on change, and often enough that coming back from the bar's
+            // own screen is not a long wait staring at nothing.
             let key = "\(s.percent ?? -1)|\(s.stale)"
-            if key != lastKey || Date().timeIntervalSince(lastDraw) > 9 {
+            if key != lastKey || Date().timeIntervalSince(lastDraw) > 4 {
                 let els = build(s)
                 let text = Self.pctText(s)
                 if !shown.isEmpty, shown != text {
@@ -92,7 +93,7 @@ final class PissStreamApp: MiniApp {
     /// value. The gauge itself is left alone: its colour is the tank level, not
     /// the link state, and dimming it read as the level having dropped.
     func build(_ s: Telemetry.Snapshot) -> [[String: Any]] {
-        var els = [textEl("label", "ISS URINE", x: 0, y: 0, font: "small",
+        var els = [textEl("label", "pISS", x: 0, y: 0, font: "small",
                           color: Self.label, align: "top_left")]
 
         let lost = Self.lost(s)
@@ -103,15 +104,16 @@ final class PissStreamApp: MiniApp {
         els.append(rectEl("g_bot", x: 0, y: 15, w: 72, h: 1, color: Self.outline))
         els.append(rectEl("g_left", x: 0, y: 9, w: 1, h: 6, color: Self.outline))
         els.append(rectEl("g_right", x: 71, y: 9, w: 1, h: 6, color: Self.outline))
-        if let p = s.percent {
-            let w = Int((min(100, max(0, p)) / 100 * 70).rounded())
-            if w > 0 {
-                els.append(rectEl("fill", x: 1, y: 9, w: w, h: 6, color: Self.fill))
-            }
-        }
-        // Always sent, drawn after the fill so it overlays the gauge. Elements
-        // persist on the device by id, so omitting it after LOS ends would
-        // leave a stale "LOS" on screen — empty text is the eraser.
+        // Always sent, even with nothing to show, so that the fill's element
+        // exists before the LOS tag's does. The bar paints elements in the order
+        // it first saw them, so a fill that only appeared once telemetry arrived
+        // would be created after the tag and cover it.
+        let w = s.percent.map { Int((min(100, max(0, $0)) / 100 * 70).rounded()) } ?? 0
+        els.append(rectEl("fill", x: 1, y: 9, w: max(1, w), h: 6,
+                          color: w > 0 ? Self.fill : "#00000000"))
+        // Always sent too. Elements persist on the device by id, so omitting it
+        // after LOS ends would leave a stale "LOS" on screen — empty text is the
+        // eraser.
         els.append(textEl("los", lost ? "LOS" : "", x: 36, y: Self.losY, font: "small",
                           color: Self.los, align: "top_mid"))
         return els
