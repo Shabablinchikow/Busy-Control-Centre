@@ -36,12 +36,25 @@ final class Runner: ObservableObject {
     /// session already running on the bar (started before launch, or by the bar
     /// itself) so the UI matches reality instead of silently disagreeing with it.
     func restore() {
+        // Release anything this app still owns on the bar from a previous run.
+        // Quitting kills the widget tasks without a clear, and the canvas keeps
+        // both the elements *and* the priority of whoever drew last — so a widget
+        // left over from an older build, drawing at a higher priority than we use
+        // now, would refuse every draw we make until something cleared it.
+        Task {
+            let client = Self.makeClient()
+            for entry in registry { await client.clear(app: entry.id) }
+            await MainActor.run { self.restoreSaved() }
+        }
+        Task { await adoptDeviceSession() }
+    }
+
+    private func restoreSaved() {
         for id in UserDefaults.standard.stringArray(forKey: Self.savedKey) ?? [] {
             if let entry = registry.first(where: { $0.id == id }), !isRunning(id) {
                 start(entry)
             }
         }
-        Task { await adoptDeviceSession() }
     }
 
     private func adoptDeviceSession() async {

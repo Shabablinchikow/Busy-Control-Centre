@@ -103,7 +103,6 @@ final class ClaudeApp: MiniApp {
         let d = UserDefaults.standard
         // Floored: a cleared settings field stores 0, which would hammer the endpoint.
         let poll = max(5, d.object(forKey: "claude.poll") as? Double ?? 180)
-        let priority = min(100, max(1, d.object(forKey: "claude.priority") as? Int ?? 20))
         let mock = d.object(forKey: "claude.mock") as? Bool ?? false
         let (mockFive, mockWeek) = Self.parseMockUsage(d.string(forKey: "claude.mockUsage") ?? "60,70")
 
@@ -149,13 +148,13 @@ final class ClaudeApp: MiniApp {
 
             var line = Self.statusLine(snap: snap, act: act, note: note, now: now)
             do {
-                let code = try await client.draw(app: app, elements: elements, priority: priority)
+                let code = try await client.draw(app: app, elements: elements)
                 switch code {
                 case 200:
                     break
                 case 409:
                     // A higher-priority app owns the display; keep trying quietly.
-                    line = "display busy: another app has priority (raise it above \(priority))"
+                    line = "paused — bar in use"
                 case 401, 403:
                     status("device rejected the access key")
                     await client.clear(app: app)
@@ -1059,7 +1058,6 @@ final class ClaudeApp: MiniApp {
 
 struct ClaudeSettingsView: View {
     @AppStorage("claude.poll") private var poll = 180.0
-    @AppStorage("claude.priority") private var priority = 20
     @AppStorage("claude.mock") private var mock = false
     @AppStorage("claude.mockUsage") private var mockUsage = "60,70"
     @AppStorage(ClaudeApp.bookmarkKey) private var bookmark = Data()
@@ -1067,7 +1065,6 @@ struct ClaudeSettingsView: View {
     var body: some View {
         Form {
             TextField("Refresh every (s)", value: $poll, format: .number)
-            TextField("Priority (1-100)", value: $priority, format: .number)
             Toggle("Mock usage (no credentials)", isOn: $mock)
             TextField("Mock five,week", text: $mockUsage)
                 .disabled(!mock)

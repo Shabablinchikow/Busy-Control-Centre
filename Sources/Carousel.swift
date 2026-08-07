@@ -14,6 +14,10 @@ final class Carousel: ObservableObject {
     /// next play/pause), so a shorter rotation just shows blanks.
     static let minInterval = 5.0
     static let defaultInterval = 30.0
+    /// How often to look again while the bar has its own screen up. The widgets
+    /// keep trying to draw regardless, and their first success is what says the
+    /// switch is back at Off.
+    static let pausedPoll = 2.0
 
     @Published private(set) var members: Set<String>
     @Published private(set) var running = false
@@ -88,6 +92,16 @@ final class Carousel: ObservableObject {
     private func loop() async {
         var previous: String?
         while !Task.isCancelled {
+            // The bar is showing one of its own screens — the switch is at Busy,
+            // Apps or Settings, or a session is running. Rotating underneath it
+            // would just queue up widgets nobody can see, and the one that came
+            // up when the switch went back to Off would be an arbitrary one.
+            if BarState.shared.busy {
+                note = "paused — the bar is showing its own screen"
+                if !(await barSleep(Self.pausedPoll)) { break }
+                continue
+            }
+            if note?.hasPrefix("paused") == true { note = nil }
             let list = Self.rotation(members)
             guard let entry = Self.next(after: previous, in: list) else {
                 note = "tick at least one widget below"

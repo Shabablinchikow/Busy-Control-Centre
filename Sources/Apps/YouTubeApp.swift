@@ -56,11 +56,11 @@ final class YouTubeApp: MiniApp {
                     await Roll.play(client: client, app: app, fields: [
                         Roll.Field(id: "subs", from: shown, to: subs, anchor: .left(0),
                                    y: Self.yLine2 + DeviceFont.smallInkOffset, color: Self.brand),
-                    ], priority: 60, then: els)
+                    ], then: els)
                     status(Self.statusLine(c))
                 } else {
-                    let code = try await client.draw(app: app, elements: els, priority: 60)
-                    status(code == 409 ? "display busy" : Self.statusLine(c))
+                    let code = try await client.draw(app: app, elements: els)
+                    status(code == 409 ? "paused — bar in use" : Self.statusLine(c))
                 }
                 shown = subs
             } catch {

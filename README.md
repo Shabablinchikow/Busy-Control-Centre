@@ -32,7 +32,7 @@ third-party dependencies — SwiftUI and the system frameworks only.
 | **Weather** | Two-tone condition icon, temperature, wind speed and direction, UV index and chance of rain |
 | **YouTube** | Subscriber count for a channel, using your own API key |
 | **Mail** | Unread count from Apple Mail's inbox, or a small celebration |
-| **Status** | Pin a banner on the bar until you switch it off |
+| **Status** | Pin one of the bar's own banners until you switch it off |
 | **Timer** | Countdown run by the bar, with your choice of banner |
 | **Pomodoro** | Work/rest cycles run by the bar |
 | **On Call** | Mic in use → the bar shows an ON CALL banner |

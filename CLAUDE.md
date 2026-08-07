@@ -18,6 +18,7 @@ Sources/
   WebJSON.swift              fetchJSON for the widgets that read the open web
   Glyphs.swift               "#" bitmaps → rect elements (weather icons, YT mark)
   DeviceFont.swift           measured character advances for the device's fonts
+  SwitchWatcher.swift        the bar's switch position, over its state WebSocket
   Roll.swift                 odometer animation for numbers that change on screen
   Banners.swift              device themes + BannerPicker
   MirrorView.swift           LED-matrix mirror of /api/screen
@@ -61,6 +62,28 @@ keychain profile `busybar-notary`.
   It also emits a fixed number of element ids per glyph: elements persist by id,
   so a 10-rect icon followed by a 6-rect one would leave four rects behind.
 - **Auth**: HTTP access key as `X-API-Token`, enforced over Wi-Fi only.
+- **The switch cannot be inferred from priority.** Apps and Settings are *scenes
+  of the bar's own busy app*, which sits at PASSTHROUGH (9) the whole time it is
+  not running a session — so the canvas accepts a widget's draw at Apps exactly
+  as it does at Off. The position is only published as an *event*, on
+  `/api/status/ws`, as protobuf `StateUpdate.input(11).switch_event(2).position(1)`
+  (BUSY 0, CUSTOM 1, OFF 2, APPS 3, SETTINGS 4). `SwitchWatcher` reads it with a
+  ~40-line wire-format walker; the schema is public at busy-app/busybar-protobuf.
+  It is *not* in the state snapshot, so the position is unknown until the switch
+  is first moved.
+- **Draw priority**, for what it is still worth: the canvas rejects a draw at
+  `priority <= current` from another app, but `priority < current` once you own
+  the screen — so a value that loses to an app at 10 has to be below 10, and
+  widgets sit at 9. A session raises the busy app to BLOCKING (101), which is the
+  409 every widget already handles.
+- **Banners need no session.** Every theme is a stock animation the device
+  already has: each `theme.json` points `bg_path` at
+  `shared/animations/<theme>_72x16.anim`, and a draw with
+  `{"type": "animation", "stock_path": "shared/on_call_72x16.anim"}` plays it. The
+  focus-session route (`/api/busy/snapshot`) also starts the bar's busy timer and
+  flips the device into its busy state, which is not what showing a banner should
+  do. There is no "busy" theme on the device, despite it being this app's default
+  for years.
 - **Never let `JSONSerialization` escape slashes.** It writes "/" as `\/`, which
   is valid JSON that the bar rejects with **HTTP 400** — so a widget reading
   "485km/h" or "NE 1m/s" had every frame thrown away and sat there black, while

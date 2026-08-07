@@ -6,8 +6,10 @@ struct Banner: Identifiable, Hashable {
     let id: String
     let title: String
 
+    /// The twelve the firmware ships, each with a `theme.json` and a matching
+    /// animation in its shared assets. There is no "busy" theme on the device —
+    /// it was in this list for years and has neither artwork nor an animation.
     static let all: [Banner] = [
-        Banner(id: "busy", title: "Busy"),
         Banner(id: "on_call", title: "On Call"),
         Banner(id: "meeting", title: "Meeting"),
         Banner(id: "dnd", title: "Do Not Disturb"),
@@ -25,6 +27,19 @@ struct Banner: Identifiable, Hashable {
     static func title(_ id: String) -> String {
         all.first { $0.id == id }?.title ?? id
     }
+
+    /// The device's own animation for this theme, as `stock_path` wants it.
+    ///
+    /// Every theme the firmware ships is a `theme.json` whose `bg_path` points at
+    /// `shared/animations/<id>_72x16.anim`, and the draw API can play exactly
+    /// those by name — so a banner needs no focus session, and no artwork of ours.
+    static func stock(_ id: String) -> String? {
+        all.contains { $0.id == id } ? "shared/\(id)_72x16.anim" : nil
+    }
+
+    /// What a widget falls back to when its saved theme is not one the device has
+    /// — "busy" was the old default and never existed on the bar.
+    static let fallback = "dnd"
 
     var image: NSImage? {
         Bundle.main.url(forResource: id, withExtension: "png", subdirectory: "Themes")

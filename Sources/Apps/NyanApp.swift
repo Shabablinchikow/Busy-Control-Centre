@@ -49,7 +49,7 @@ final class NyanApp: MiniApp {
             do {
                 try await client.uploadAsset(app: app, file: fn, data: f.png())
                 let code = try await client.draw(app: app, elements: [imageEl("frame", path: fn)])
-                if code == 409 { status("display busy (409)") }
+                if code == 409 { status("paused — bar in use") }
             } catch {
                 status("error: \(error.localizedDescription)")
                 _ = await barSleep(1.0)

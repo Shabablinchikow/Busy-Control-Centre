@@ -125,10 +125,10 @@ final class FlightradarApp: MiniApp {
                 shown = text
                 do {
                     if fields.isEmpty {
-                        let code = try await client.draw(app: app, elements: els, priority: 60,
+                        let code = try await client.draw(app: app, elements: els,
                                                          ledNotificationColor: onScreen ? nil : Self.ledColor)
                         if code == 409 {
-                            status("display busy")
+                            status("paused — bar in use")
                         } else {
                             onScreen = true
                             status(Self.statusLine(p, route: route, units: units))
@@ -137,7 +137,7 @@ final class FlightradarApp: MiniApp {
                         // The progress bar lives in the gutter the masks paint
                         // over, so it is handed to the roll to keep on top.
                         await Roll.play(client: client, app: app, fields: fields,
-                                        priority: 60,
+                                       
                                         over: Self.barEls(Self.progress(p, route)),
                                         then: els)
                         status(Self.statusLine(p, route: route, units: units))

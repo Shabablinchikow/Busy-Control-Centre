@@ -69,11 +69,11 @@ final class WeatherApp: MiniApp {
                 shownTemp = temp
                 shownWind = wind
                 if fields.isEmpty {
-                    let code = try await client.draw(app: app, elements: els, priority: 60)
-                    status(code == 409 ? "display busy" : Self.statusLine(c, units: units))
+                    let code = try await client.draw(app: app, elements: els)
+                    status(code == 409 ? "paused — bar in use" : Self.statusLine(c, units: units))
                 } else {
                     await Roll.play(client: client, app: app, fields: fields,
-                                    priority: 60, then: els)
+                                    then: els)
                     status(Self.statusLine(c, units: units))
                 }
             } catch {

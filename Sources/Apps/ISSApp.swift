@@ -72,13 +72,13 @@ final class ISSApp: MiniApp {
                 }
             case .approach, .departing:
                 let els = buildPass(distance: distance, tick: tick, departing: state == .departing)
-                if let code = try? await client.draw(app: app, elements: els, priority: 60),
+                if let code = try? await client.draw(app: app, elements: els),
                    code != 409 { onScreen = true }
             case .overhead:
                 var notify: String?
                 if !ledNotified { notify = "#00A8FFFF"; ledNotified = true }
                 let els = buildOverhead(distance: distance, tick: tick)
-                if let code = try? await client.draw(app: app, elements: els, priority: 60,
+                if let code = try? await client.draw(app: app, elements: els,
                                                      ledNotificationColor: notify),
                    code != 409 { onScreen = true }
             }

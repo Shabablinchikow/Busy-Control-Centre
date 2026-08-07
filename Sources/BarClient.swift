@@ -32,6 +32,25 @@ struct BarClient {
     /// anything that does not escape slashes (curl, python) drew fine.
     static let bodyOptions: JSONSerialization.WritingOptions = [.withoutEscapingSlashes]
 
+    /// What widgets draw at. It matches the firmware's PASSTHROUGH priority
+    /// exactly, and that is the whole trick.
+    ///
+    /// The bar's idle scene sets itself to PASSTHROUGH (9) — literally
+    /// `busy_set_priority(instance, false)` — while every app the switch starts
+    /// runs at DEFAULT (10) and a session at BLOCKING (101). The canvas then
+    /// rejects a draw when `priority < current` if we already own the screen, and
+    /// when `priority <= current` if somebody else does. At 9 that means:
+    ///
+    /// - switch at Off: 9 is not < 9, so widgets draw;
+    /// - switch at Apps, Settings, Busy: 9 < 10, so they stop — even mid-widget,
+    ///   which 10 did not, because holding the canvas made the test strict.
+    ///
+    /// The device does the gating; nothing has to watch the switch. A widget at
+    /// 60 was simply shouting over the bar's own screens.
+    ///
+    /// On Call is the exception, and draws at its own higher priority.
+    static let widgetPriority = 9
+
     let base: URL
     /// HTTP access key (4–10 digit PIN, Settings → HTTP Access on the bar).
     /// Enforced only over Wi-Fi on current firmware; sent as X-API-Token.
@@ -56,8 +75,12 @@ struct BarClient {
     /// POST /api/display/draw. Returns the HTTP status code — the device answers
     /// 409 when a higher-priority app owns the display; callers keep ticking.
     @discardableResult
-    func draw(app: String, elements: [[String: Any]], priority: Int? = nil,
+    func draw(app: String, elements: [[String: Any]], priority: Int? = widgetPriority,
               ledNotificationColor: String? = nil) async throws -> Int {
+        // The bar has a screen of its own up: do not draw over it. Reported as
+        // 409, which every widget already treats as "not now, keep polling".
+        if await BarState.shared.paused(app) { return 409 }
+
         var body: [String: Any] = ["application_name": app, "elements": elements]
         if let priority { body["priority"] = priority }
         if let ledNotificationColor { body["led_notification_color"] = ledNotificationColor }
@@ -72,6 +95,12 @@ struct BarClient {
             barLog.error("draw \(app, privacy: .public) \(elements.count) elements -> HTTP \(code)")
         } else {
             barLog.debug("draw \(app, privacy: .public) \(elements.count) elements -> \(code)")
+        }
+        await BarState.shared.note(draw: code)
+        if code == 409 {
+            // Refused, so a session is running. Stopping is not enough: whatever
+            // we drew last would sit on top of it until something removes it.
+            await clear(app: app)
         }
         return code
     }
@@ -160,6 +189,19 @@ struct BarClient {
         return (resp as? HTTPURLResponse)?.statusCode ?? 0
     }
 
+    /// POST /api/smart_home/switch — the emulated switch the bar exposes to Matter.
+    /// Called directly now that the banners no longer ride on a focus session,
+    /// which used to carry `trigger_smart_home` for us.
+    @discardableResult
+    func setSmartHomeSwitch(on: Bool) async -> Int {
+        var req = request(base.appendingPathComponent("api/smart_home/switch"), method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["state": on],
+                                                   options: Self.bodyOptions)
+        let (_, resp) = (try? await Self.session.data(for: req)) ?? (Data(), URLResponse())
+        return (resp as? HTTPURLResponse)?.statusCode ?? 0
+    }
+
     /// POST /api/assets/upload?application_name=…&file=… with raw bytes.
     /// Returns the HTTP status code (508 = asset briefly locked by a draw).
     @discardableResult
@@ -173,6 +215,86 @@ struct BarClient {
         req.httpBody = data
         let (_, resp) = try await Self.session.data(for: req)
         return (resp as? HTTPURLResponse)?.statusCode ?? 0
+    }
+}
+
+/// Whether the bar is showing a screen of its own, and so whether widgets should
+/// keep off the display.
+///
+/// Two sources, because neither is enough alone:
+///
+/// - **The switch**, streamed from the device (see `SwitchWatcher`). Anywhere but
+///   Off means the bar has its own screen up. Priority cannot substitute for
+///   this: Apps and Settings are scenes of the bar's own busy app, which stays at
+///   PASSTHROUGH throughout, so the canvas accepts a widget's draw at Apps
+///   exactly as it does at Off.
+/// - **A 409 from the canvas**, which is what a running session looks like.
+///
+/// The position is unknown until the switch is first moved — the device publishes
+/// it as an event and leaves it out of the state snapshot — so a widget started
+/// while the switch is already at Apps draws once, until the switch next moves.
+@MainActor
+final class BarState: ObservableObject {
+    static let shared = BarState()
+
+    /// Widgets that may draw over the bar's own screens. A call is happening
+    /// whether or not somebody left the switch on Settings.
+    static let mayOverride: Set<String> = ["on-call"]
+
+    @Published private(set) var position = SwitchPosition.off
+    /// The canvas refused the last draw — a session is running.
+    @Published private(set) var refused = false
+
+    /// The bar is showing something of its own.
+    var busy: Bool { !position.isOff || refused }
+
+    /// Whether this widget should stay off the display right now.
+    ///
+    /// The switch alone decides this — deliberately. Gating on `refused` as well
+    /// deadlocked: a paused draw never reaches the device, so once a session had
+    /// set `refused` there was no 200 left to clear it and every widget stayed
+    /// paused for good, with the switch at Off and the bar blank. A session needs
+    /// no help from us anyway; the canvas refuses those draws itself.
+    func paused(_ app: String) -> Bool {
+        !position.isOff && !Self.mayOverride.contains(app)
+    }
+
+    func note(draw code: Int) {
+        switch code {
+        case 200: refused = false
+        case 409: refused = true
+        default: break  // a rejected frame says nothing about who owns the screen
+        }
+    }
+
+    /// A new connection means our idea of the switch may be stale — positions
+    /// arrive as events, so a flick that happened while the socket was down is
+    /// simply lost, and a widget would stay paused for ever waiting for an "Off"
+    /// that already came and went. Assume Off and let the next flick correct it:
+    /// a bar stuck showing nothing is worse than one that draws a frame it should
+    /// not have.
+    func noteReconnected() {
+        if !position.isOff { barLog.info("switch stream reconnected; assuming Off") }
+        position = .off
+    }
+
+    func note(switch new: SwitchPosition) {
+        guard new != position else { return }
+        let wasOff = position.isOff
+        position = new
+        // Leaving Off: take everything of ours off the display. Elements persist
+        // until something removes them, so simply going quiet would leave the last
+        // frame sitting on top of the bar's own screen.
+        if wasOff, !new.isOff { Task { await Self.clearAll() } }
+    }
+
+    private static func clearAll() async {
+        let host = UserDefaults.standard.string(forKey: "host") ?? "10.0.4.20"
+        let client = BarClient(host: host,
+                               token: UserDefaults.standard.string(forKey: "accessKey"))
+        for entry in registry where !mayOverride.contains(entry.id) {
+            await client.clear(app: entry.id)
+        }
     }
 }
 
@@ -211,6 +333,15 @@ private let deviceFallback: [Character: String] = [
 func rectEl(_ id: String, x: Int, y: Int, w: Int, h: Int, color: String) -> [String: Any] {
     ["id": id, "type": "rectangle", "x": x, "y": y, "width": w, "height": h,
      "border_width": 0, "fill": "solid", "fill_colors": [color]]
+}
+
+/// Plays one of the device's own animations — the banner themes live at
+/// `shared/<theme>_72x16.anim`, which is the very path each theme.json points
+/// its `bg_path` at. Drawing one shows the real banner without starting a focus
+/// session, so the bar's timer and busy status stay untouched.
+func animationEl(_ id: String, stock: String, x: Int = 0, y: Int = 0,
+                 loop: Bool = true) -> [String: Any] {
+    ["id": id, "type": "animation", "stock_path": stock, "x": x, "y": y, "loop": loop]
 }
 
 func imageEl(_ id: String, path: String, x: Int = 0, y: Int = 0) -> [String: Any] {

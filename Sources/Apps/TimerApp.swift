@@ -69,7 +69,7 @@ final class TimerApp: MiniApp {
     func run(client: BarClient, status: @escaping @Sendable (String) -> Void) async {
         let d = UserDefaults.standard
         let minutes = max(1, d.object(forKey: "timer.minutes") as? Int ?? 25)
-        let theme = d.string(forKey: "timer.theme") ?? "busy"
+        let theme = d.string(forKey: "timer.theme") ?? Banner.fallback
         let smartHome = d.object(forKey: "timer.smartHome") as? Bool ?? false
         let totalMs = minutes * 60_000
 
@@ -127,7 +127,7 @@ final class TimerApp: MiniApp {
 
 struct TimerSettingsView: View {
     @AppStorage("timer.minutes") private var minutes = 25
-    @AppStorage("timer.theme") private var theme = "busy"
+    @AppStorage("timer.theme") private var theme = Banner.fallback
     @AppStorage("timer.smartHome") private var smartHome = false
 
     var body: some View {

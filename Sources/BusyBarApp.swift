@@ -6,6 +6,7 @@ struct BusyBarApp: App {
     @StateObject private var runner = Runner()
     @StateObject private var visibility = WidgetVisibility()
     @StateObject private var carousel = Carousel()
+    private let switchWatcher = SwitchWatcher()
     @AppStorage("host") private var host = "10.0.4.20"
 
     var body: some Scene {
@@ -28,10 +29,17 @@ struct BusyBarApp: App {
                     LocalNetworkPermission.trigger()
                     runner.restore()
                     carousel.restore()
+                    switchWatcher.start(host: host,
+                                        token: UserDefaults.standard.string(forKey: "accessKey"))
                 }
         }
         // resizable: drag the window wider and the LED matrix grows with it
         .windowResizability(.contentMinSize)
+        // The stream is per-device, so it has to be rebuilt when the bar moves.
+        .onChange(of: host) { _, new in
+            switchWatcher.start(host: new,
+                                token: UserDefaults.standard.string(forKey: "accessKey"))
+        }
         .commands {
             // replaces the default About panel with our attributions
             CommandGroup(replacing: .appInfo) {
@@ -99,9 +107,14 @@ let registry: [AppEntry] = [
     AppEntry(id: "mail", name: "Mail", blurb: "Unread count from Apple Mail's inbox, or a small celebration.",
              symbol: "envelope", make: { MailApp() },
              settings: { AnyView(MailSettingsView()) }),
+    // Exclusive, unlike the other banner widgets: it draws now rather than
+    // starting a session, and a draw cannot outrank the widgets while still
+    // yielding to the bar's own screens — 10 is the only priority that does both.
+    // So a pinned banner wins by turning the others off, which is what pinning
+    // one means anyway.
     AppEntry(id: "status", name: "Status", blurb: "Pin a banner on the bar until you switch it off.",
              symbol: "flag", make: { StatusApp() },
-             settings: { AnyView(StatusSettingsView()) }, exclusive: false),
+             settings: { AnyView(StatusSettingsView()) }),
     AppEntry(id: "focus-timer", name: "Timer", blurb: "Countdown session on the bar, with your choice of banner.",
              symbol: "timer", make: { TimerApp() },
              settings: { AnyView(TimerSettingsView()) }, exclusive: false),

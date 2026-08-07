@@ -113,7 +113,7 @@ final class MusicApp: MiniApp {
                 do {
                     try await client.uploadAsset(app: app, file: fn, data: f.png())
                     let code = try await client.draw(app: app, elements: els)
-                    if code == 409 { line = "display busy (409), retrying" }
+                    if code == 409 { line = "paused — bar in use" }
                 } catch {
                     line = "draw error: \(error.localizedDescription)"
                 }

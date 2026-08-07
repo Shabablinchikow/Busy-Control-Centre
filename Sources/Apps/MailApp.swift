@@ -75,9 +75,8 @@ final class MailApp: MiniApp {
         while !Task.isCancelled {
             do {
                 let count = try await Self.unreadCount()
-                let code = try await client.draw(app: app, elements: Self.frame(count),
-                                                 priority: 60)
-                status(code == 409 ? "display busy" : Self.statusLine(count))
+                let code = try await client.draw(app: app, elements: Self.frame(count))
+                status(code == 409 ? "paused — bar in use" : Self.statusLine(count))
             } catch {
                 // Never start Mail to read it: an Apple event to a quit app
                 // launches it, which is not something a status widget should do.

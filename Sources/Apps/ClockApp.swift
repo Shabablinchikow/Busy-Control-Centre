@@ -15,7 +15,7 @@ final class ClockApp: MiniApp {
                 let code = try await client.draw(app: app, elements: [
                     textEl("0", hhmm, x: 36, y: 15, font: "extra_large", align: "bottom_mid")
                 ])
-                status(code == 409 ? "display busy (409), retrying…" : hhmm)
+                status(code == 409 ? "paused — bar in use" : hhmm)
             } catch {
                 status("cannot reach \(client.base.host ?? "?"): \(error.localizedDescription)")
             }
