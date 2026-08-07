@@ -38,6 +38,9 @@ final class StocksApp: MiniApp {
     struct Quote {
         var symbol = "", price = 0.0, prevClose = 0.0
         var marketOpen = false
+        /// ISO code from the quote — the same ticker is priced in dollars on one
+        /// exchange and euros on another, so it is not something to assume.
+        var currency = ""
     }
 
     // MARK: - Main loop
@@ -75,7 +78,7 @@ final class StocksApp: MiniApp {
             }
 
             if let q = cache[symbol]?.quote {
-                let priceText = Self.fmtPrice(q.price)
+                let priceText = Self.priceText(q)
                 let pctText = Self.fmtPct(Self.pctChange(price: q.price, prevClose: q.prevClose))
                 let els = Self.frame(q)
                 // Only the same symbol's own numbers roll: flipping AAPL to MSFT
@@ -136,7 +139,8 @@ final class StocksApp: MiniApp {
         let open = Self.isOpen(now: Date().timeIntervalSince1970,
                               start: Self.num(regular?["start"]),
                               end: Self.num(regular?["end"]))
-        return Quote(symbol: symbol, price: price, prevClose: prev, marketOpen: open)
+        return Quote(symbol: symbol, price: price, prevClose: prev, marketOpen: open,
+                     currency: meta["currency"] as? String ?? "")
     }
 
     // MARK: - Pure helpers
@@ -160,8 +164,26 @@ final class StocksApp: MiniApp {
         return (price - prevClose) / prevClose * 100
     }
 
+    /// No decimals past a thousand: a tenth of a dollar on a $1704 share is noise,
+    /// and those four pixels are what let a four-letter ticker keep the tall face.
     static func fmtPrice(_ v: Double) -> String {
-        String(format: v >= 1000 ? "%.1f" : "%.2f", v)
+        String(format: v >= 1000 ? "%.0f" : "%.2f", v)
+    }
+
+    /// What goes in front of the price. "$" where a currency uses one, otherwise
+    /// the ISO code: the bar throws away any frame containing a character it does
+    /// not have, and "€" is not one this app has ever been able to test on the
+    /// device. A wide "EUR" beats a widget that goes black.
+    static func currencyMark(_ code: String) -> String {
+        switch code.uppercased() {
+        case "": return ""
+        case "USD", "CAD", "AUD", "NZD", "HKD", "SGD", "TWD", "MXN": return "$"
+        default: return code.uppercased()
+        }
+    }
+
+    static func priceText(_ q: Quote) -> String {
+        currencyMark(q.currency) + fmtPrice(q.price)
     }
 
     /// Sign and number in one element. The font does carry an up arrow, but at
@@ -182,9 +204,14 @@ final class StocksApp: MiniApp {
     }
 
     /// The tallest font the ticker fits in without eating into the price column.
+    ///
+    /// Both measurements matter to the pixel: the price column is right-aligned at
+    /// `xRight`, so its ink starts at `xRight - width`, and the ticker's ink stops
+    /// a bearing short of its own advance. Getting either wrong by one costs a
+    /// whole font step — ASML wants 48px of ink and has 50.
     static func symbolFont(_ symbol: String, price: String, pct: String) -> DeviceFont {
-        let budget = 72 - rightWidth(price: price, pct: pct) - gap
-        return symbolFonts.first { $0.width(symbol) <= budget } ?? .small
+        let budget = xRight - rightWidth(price: price, pct: pct) - gap
+        return symbolFonts.first { $0.inkWidth(symbol) <= budget } ?? .small
     }
 
     static func color(_ q: Quote) -> String {
@@ -195,7 +222,7 @@ final class StocksApp: MiniApp {
 
     static func statusLine(_ q: Quote) -> String {
         let pct = pctChange(price: q.price, prevClose: q.prevClose)
-        return "\(q.symbol)  \(fmtPrice(q.price))  \(fmtPct(pct))"
+        return "\(q.symbol)  \(priceText(q))  \(fmtPct(pct))"
             + (q.marketOpen ? "" : "  (closed)")
     }
 
@@ -219,7 +246,7 @@ final class StocksApp: MiniApp {
     static func frame(_ q: Quote) -> [[String: Any]] {
         let pct = pctChange(price: q.price, prevClose: q.prevClose)
         let tint = color(q)
-        let priceText = fmtPrice(q.price), pctText = fmtPct(pct)
+        let priceText = Self.priceText(q), pctText = fmtPct(pct)
         var els: [[String: Any]] = [
             // Full height on the left, in the largest font the price column can
             // spare — a four-letter ticker gets the 2px-thick 14-row face.
@@ -260,23 +287,38 @@ final class StocksApp: MiniApp {
         assert(color(Quote(price: 1, prevClose: 2, marketOpen: true)) == down, "down red")
         assert(color(Quote(price: 2, prevClose: 1, marketOpen: false)) == shut, "closed grey")
 
-        assert(fmtPrice(312.244) == "312.24" && fmtPrice(1234.56) == "1234.6",
-               "four significant-ish digits so wide prices still fit")
+        assert(fmtPrice(312.244) == "312.24" && fmtPrice(1704.37) == "1704",
+               "cents under a thousand, whole units above it")
+        assert(currencyMark("USD") == "$" && currencyMark("usd") == "$", "dollars get a sign")
+        assert(currencyMark("EUR") == "EUR" && currencyMark("GBp") == "GBP",
+               "everything else gets its code, because the sign may not be drawable")
+        assert(currencyMark("") == "", "an unknown currency adds nothing")
+        assert(priceText(Quote(price: 1704.37, currency: "USD")) == "$1704", "the shape on the bar")
+        assert(priceText(Quote(price: 312.41, currency: "")).allSatisfy { $0.isASCII },
+               "and it is always ASCII")
 
         // The ticker takes the tallest font that leaves the price column intact.
-        assert(symbolFont("F", price: "312.24", pct: fmtPct(0.4)) == .extraLarge,
+        assert(symbolFont("F", price: "$312.24", pct: fmtPct(0.4)) == .extraLarge,
                "a one-letter ticker can be as tall as the bar")
-        assert(symbolFont("AAPL", price: "312.24", pct: fmtPct(0.4)) == .extraLarge,
+        assert(symbolFont("AAPL", price: "$312.41", pct: fmtPct(0.4)) == .extraLarge,
                "and so can four letters — what the second decimal was spent on")
-        assert(symbolFont("MSFT", price: "312.24", pct: fmtPct(0.4)) == .large,
-               "a wider four-letter ticker steps down")
+        // The one that started this: 48px of ink against a 52px budget.
+        assert(symbolFont("ASML", price: priceText(Quote(price: 1704.37, currency: "USD")),
+                          pct: fmtPct(1.56)) == .extraLarge,
+               "ASML is 48px of ink and fits, which counting advances said it did not")
+        assert(symbolFont("MSFT", price: "$312.41", pct: fmtPct(0.4)) == .large,
+               "an M is 16px in the tall face, so a wider four-letter ticker steps down")
         assert(symbolFont(String(repeating: "X", count: 14), price: "9.99", pct: fmtPct(0.4)) == .small,
                "an absurd ticker falls back to the small font rather than overflowing")
-        // Whatever font is chosen, ticker and price column must not overlap.
-        for sym in ["F", "AAPL", "MSFT", "^GSPC", "BRK-B"] {
-            let f = symbolFont(sym, price: "312.24", pct: fmtPct(-12.3))
-            assert(f.width(sym) + gap + rightWidth(price: "312.24", pct: fmtPct(-12.3)) <= 72,
-                   "\(sym) in \(f.api) still clears the price")
+        // Whatever font is chosen, the ticker's ink must stop before the price
+        // column's ink starts, with the gap between them.
+        for sym in ["F", "AAPL", "MSFT", "ASML", "^GSPC", "BRK-B"] {
+            for price in ["$312.41", "$1704", "EUR650.00"] {
+                let pct = fmtPct(-12.3)
+                let f = symbolFont(sym, price: price, pct: pct)
+                assert(f.inkWidth(sym) + gap <= xRight - rightWidth(price: price, pct: pct),
+                       "\(sym) in \(f.api) runs into \(price)")
+            }
         }
     }
     #endif

@@ -37,6 +37,14 @@ enum DeviceFont: String {
 
     func width(_ s: String) -> Int { s.reduce(0) { $0 + advance($1) } }
 
+    /// Every glyph's advance includes a right-side bearing — 1px, doubled to 2 in
+    /// `extra_large` — so a left-aligned string's *ink* stops that far short of
+    /// its width. Worth the distinction: measuring ASML by advance made it miss
+    /// the tall face by a single pixel.
+    var bearing: Int { self == .extraLarge ? 2 : 1 }
+
+    func inkWidth(_ s: String) -> Int { s.isEmpty ? 0 : max(0, width(s) - bearing) }
+
     /// Rows between a `top_*` element's nominal y and its first row of ink.
     /// Established on the bar for `small`; the others are not used for anything
     /// that needs pixel alignment yet.
@@ -96,6 +104,10 @@ enum DeviceFont: String {
                    "\(ch) doubles")
         }
         assert(DeviceFont.extraLarge.width("AAPL") == 46, "the widest ticker that fits")
+        assert(DeviceFont.extraLarge.inkWidth("AAPL") == 44, "its ink stops 2px short of that")
+        assert(DeviceFont.small.inkWidth("312.24") == 20 && DeviceFont.small.width("312.24") == 21,
+               "and 1px short in the small face")
+        assert(DeviceFont.small.inkWidth("") == 0, "an empty string has no ink")
         assert(DeviceFont.large.width("MSFT") == 32, "and the one that has to step down")
         assert(DeviceFont.bold.width("AAPL") == 27, "bold keeps 2px strokes at 7px tall")
 

@@ -282,6 +282,16 @@ final class ClaudeApp: MiniApp {
     /// (unsandboxed dev builds can, after a one-time allow dialog). Any failure is
     /// non-fatal and falls through to `.credentials.json` inside the granted directory.
     static func accessToken(dir: GrantedDir?) async -> (String?, String?) {
+        // Serve the token already in hand rather than going back to the Keychain
+        // every poll. Each read can pop the system allow dialog, and "Always
+        // Allow" does not hold: Claude Code rewrites its own Keychain item when it
+        // refreshes the OAuth token, which resets that item's access list and
+        // drops the permission this app was given. One read per token instead of
+        // one per poll turns a dialog every three minutes into one every few
+        // hours.
+        let now = Date().timeIntervalSince1970
+        if let cached = await tokenCache.token(now: now) { return (cached, nil) }
+
         var blob = await keychainBlob()
         if blob == nil, let dir {
             blob = try? String(contentsOf: dir.url.appendingPathComponent(".credentials.json"),
@@ -295,10 +305,34 @@ final class ClaudeApp: MiniApp {
               let token = oauth["accessToken"] as? String,
               let expiresAt = oauth["expiresAt"] as? Double
         else { return (nil, "credentials unreadable — run claude") }
-        if expiresAt / 1000 <= Date().timeIntervalSince1970 {
+        if expiresAt / 1000 <= now {
             return (nil, "AUTH EXPIRED — run claude")
         }
+        await tokenCache.store(token, expiresAt: expiresAt / 1000)
         return (token, nil)
+    }
+
+    private static let tokenCache = TokenCache()
+
+    /// The token last read, held until shortly before it expires. In memory only —
+    /// nothing about the credentials is written anywhere.
+    actor TokenCache {
+        /// Re-read this long before expiry, so a token handed out cannot go stale
+        /// mid-request.
+        static let margin = 120.0
+
+        private var token: String?
+        private var expiresAt = 0.0
+
+        func token(now: Double) -> String? {
+            guard let token, now < expiresAt - Self.margin else { return nil }
+            return token
+        }
+
+        func store(_ token: String, expiresAt: Double) {
+            self.token = token
+            self.expiresAt = expiresAt
+        }
     }
 
     /// Read the generic-password item off the main pool: on an unsandboxed build the
