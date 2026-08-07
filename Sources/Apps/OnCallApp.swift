@@ -13,9 +13,6 @@ final class OnCallApp: MiniApp {
     /// whether or not the switch is on Apps or Settings. Below a running session
     /// (101) — deliberately, since that is someone deciding to be busy already.
     static let priority = 90
-    /// Redraw cadence while the mic is live, so the banner survives anything else
-    /// briefly taking the screen.
-    static let refresh = 3.0
 
     func run(client: BarClient, status: @escaping @Sendable (String) -> Void) async {
         let d = UserDefaults.standard
@@ -25,26 +22,38 @@ final class OnCallApp: MiniApp {
         let stock = Banner.stock(theme)
 
         var showing = false
-        var lastDraw = Date.distantPast
+        var drawnAt = -1
         status(stock == nil ? "\(title) has no animation on the bar — pick another banner"
                             : "watching the microphone")
 
         while !Task.isCancelled, let stock {
             let live = Self.micInUse()
             if live {
-                // Drawn, not a session: a session runs the bar's busy timer and
-                // sets the device busy, and a call should do neither.
-                if !showing || Date().timeIntervalSince(lastDraw) > Self.refresh {
+                // Drawn once, not on a timer: re-sending an animation element
+                // restarts it, which reads as a flicker every few seconds. The
+                // element stays up on its own, so it is only worth sending again
+                // while the bar is refusing us.
+                //
+                // Drawn at all, rather than started as a session: a session runs
+                // the bar's busy timer and sets the device busy, and a call
+                // should do neither.
+                // Redrawn when the switch has moved as well as when the call
+                // starts: the bar drops our elements when its own screens come
+                // and go, and this one is otherwise drawn exactly once so its
+                // animation does not restart and flicker.
+                let generation = await BarState.shared.generation
+                if !showing || drawnAt != generation {
                     let code = (try? await client.draw(
                         app: app, elements: [animationEl("banner", stock: stock)],
                         priority: Self.priority)) ?? 0
-                    lastDraw = Date()
-                    if !showing, code == 200, smartHome {
-                        await client.setSmartHomeSwitch(on: true)
+                    if code == 200 {
+                        showing = true
+                        drawnAt = generation
+                        if smartHome { await client.setSmartHomeSwitch(on: true) }
+                        status("\(title) — mic in use")
+                    } else {
+                        status("\(title) — bar busy (HTTP \(code)), retrying")
                     }
-                    showing = true
-                    status(code == 200 ? "\(title) — mic in use"
-                                       : "\(title) — bar busy (HTTP \(code))")
                 }
             } else if showing {
                 await client.clear(app: app)

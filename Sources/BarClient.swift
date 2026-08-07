@@ -32,24 +32,26 @@ struct BarClient {
     /// anything that does not escape slashes (curl, python) drew fine.
     static let bodyOptions: JSONSerialization.WritingOptions = [.withoutEscapingSlashes]
 
-    /// What widgets draw at. It matches the firmware's PASSTHROUGH priority
-    /// exactly, and that is the whole trick.
+    /// What widgets draw at: DEFAULT, the lowest the firmware calls useful.
     ///
-    /// The bar's idle scene sets itself to PASSTHROUGH (9) — literally
-    /// `busy_set_priority(instance, false)` — while every app the switch starts
-    /// runs at DEFAULT (10) and a session at BLOCKING (101). The canvas then
-    /// rejects a draw when `priority < current` if we already own the screen, and
-    /// when `priority <= current` if somebody else does. At 9 that means:
+    /// The canvas compares against whatever holds the screen, and the comparison
+    /// is strict only when nothing is rendering or when the draw comes from the
+    /// app that already owns it:
     ///
-    /// - switch at Off: 9 is not < 9, so widgets draw;
-    /// - switch at Apps, Settings, Busy: 9 < 10, so they stop — even mid-widget,
-    ///   which 10 did not, because holding the canvas made the test strict.
+    ///     gui == NULL || same app  ->  rejected if priority <  current
+    ///     someone else rendering   ->  rejected if priority <= current
     ///
-    /// The device does the gating; nothing has to watch the switch. A widget at
-    /// 60 was simply shouting over the bar's own screens.
+    /// The bar's idle busy app sits at PASSTHROUGH (9), so a draw at 9 gets in
+    /// only while the bar renders nothing at all — the moment its own app puts
+    /// anything on screen, 9 <= 9 and every widget is locked out for good, which
+    /// is exactly how pISS went blank and took the carousel's rotation with it.
+    /// 10 is admitted in every one of those states, and a session, which raises
+    /// the busy app to BLOCKING (101), still refuses it.
     ///
-    /// On Call is the exception, and draws at its own higher priority.
-    static let widgetPriority = 9
+    /// What priority cannot do is tell Apps and Settings from Off: those are
+    /// scenes of that same busy app, still at PASSTHROUGH. `SwitchWatcher` is
+    /// what stops widgets there.
+    static let widgetPriority = 10
 
     let base: URL
     /// HTTP access key (4–10 digit PIN, Settings → HTTP Access on the bar).
@@ -96,7 +98,6 @@ struct BarClient {
         } else {
             barLog.debug("draw \(app, privacy: .public) \(elements.count) elements -> \(code)")
         }
-        await BarState.shared.note(draw: code)
         return code
     }
 
@@ -236,51 +237,58 @@ final class BarState: ObservableObject {
     /// whether or not somebody left the switch on Settings.
     static let mayOverride: Set<String> = ["on-call"]
 
-    @Published private(set) var position = SwitchPosition.off
-    /// The canvas refused the last draw — a session is running, and it owns the
-    /// screen outright, so nothing of ours is showing anyway. Deliberately not
-    /// followed by a clear: a widget that redraws on a slow cadence (pISS holds
-    /// its frame for nine seconds) would be wiped by one transient refusal and
-    /// leave the bar black until its next turn.
-    @Published private(set) var refused = false
+    /// Remembered across launches: the device only publishes the switch when it
+    /// moves, so a fresh app has no way to ask where it is. Without this, quitting
+    /// with the switch on Apps and starting again drew straight over the bar's own
+    /// screen until the switch was next touched.
+    private static let positionKey = "switch.position"
+
+    @Published private(set) var position = BarState.savedPosition()
+
+    private static func savedPosition() -> SwitchPosition {
+        let saved = UserDefaults.standard.object(forKey: positionKey) as? Int
+        return saved.flatMap(SwitchPosition.init(rawValue:)) ?? .off
+    }
+    /// Bumped whenever the bar may have thrown our elements away — which is any
+    /// time its own screens come or go. Elements do not survive the bar's app
+    /// taking the canvas, and a widget that draws once and then leaves the
+    /// element alone (the banners, so their animation does not restart and
+    /// flicker) has no other way to know it needs to draw again.
+    @Published private(set) var generation = 0
 
     /// The bar is showing something of its own.
-    var busy: Bool { !position.isOff || refused }
+    ///
+    /// The switch decides this and nothing else. A 409 used to count too, which
+    /// stalled the carousel for no good reason: the widget that draws most often
+    /// is the one most likely to catch a *transient* refusal — pISS redraws every
+    /// four seconds and rolls its digits frame by frame — and every one of those
+    /// re-armed the pause. A refusal means somebody else has the screen this
+    /// instant, which is not the same as the bar having its own screen up.
+    var busy: Bool { !position.isOff }
 
     /// Whether this widget should stay off the display right now.
     ///
-    /// The switch alone decides this — deliberately. Gating on `refused` as well
-    /// deadlocked: a paused draw never reaches the device, so once a session had
-    /// set `refused` there was no 200 left to clear it and every widget stayed
-    /// paused for good, with the switch at Off and the bar blank. A session needs
-    /// no help from us anyway; the canvas refuses those draws itself.
+    /// A session needs no help from us: the canvas refuses those draws itself,
+    /// and it owns the screen outright while it does.
     func paused(_ app: String) -> Bool {
         !position.isOff && !Self.mayOverride.contains(app)
     }
 
-    func note(draw code: Int) {
-        switch code {
-        case 200: refused = false
-        case 409: refused = true
-        default: break  // a rejected frame says nothing about who owns the screen
-        }
-    }
-
-    /// A new connection means our idea of the switch may be stale — positions
-    /// arrive as events, so a flick that happened while the socket was down is
-    /// simply lost, and a widget would stay paused for ever waiting for an "Off"
-    /// that already came and went. Assume Off and let the next flick correct it:
-    /// a bar stuck showing nothing is worse than one that draws a frame it should
-    /// not have.
+    /// The stream came back. What we last saw is kept rather than reset: the
+    /// device publishes the switch only when it moves, so guessing Off here would
+    /// undo both the remembered position and any flick made while the socket was
+    /// down — and drawing over the bar's own screen is the thing this is for. A
+    /// flick of the switch corrects it either way.
     func noteReconnected() {
-        if !position.isOff { barLog.info("switch stream reconnected; assuming Off") }
-        position = .off
+        barLog.info("switch stream connected; last known position \(self.position.name, privacy: .public)")
     }
 
     func note(switch new: SwitchPosition) {
         guard new != position else { return }
         let wasOff = position.isOff
         position = new
+        generation += 1
+        UserDefaults.standard.set(new.rawValue, forKey: Self.positionKey)
         // Leaving Off: take everything of ours off the display. Elements persist
         // until something removes them, so simply going quiet would leave the last
         // frame sitting on top of the bar's own screen.

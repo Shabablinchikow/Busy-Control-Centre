@@ -43,9 +43,15 @@ keychain profile `busybar-notary`.
 
 ## Device API facts worth remembering
 
-- **Priority.** `draw` takes 1–100; a request wins if its priority ≥ the running
-  app's. Built-in apps sit at 10, an active focus session at 90. A widget getting
-  HTTP 409 means something outranks it — keep ticking, don't treat it as fatal.
+- **Priority.** `draw` takes 1–100. The canvas rejects a draw at `priority <=
+  current` when somebody else is rendering, and at `priority < current` when
+  nothing is or when the draw comes from the app that already owns the screen.
+  The bar's idle app sits at PASSTHROUGH (9), anything the loader starts at
+  DEFAULT (10), a running session at BLOCKING (101). Widgets draw at 10:
+  9 gets in only while the bar renders nothing at all, and locks every widget out
+  for good the moment its own app puts something on screen. A 409 means something
+  outranks us — keep ticking, don't treat it as fatal, and don't clear on it
+  either (that blanks a widget that redraws slowly).
 - **Elements persist by id** until overwritten or the app clears itself. To make
   a badge disappear you must redraw it with empty text; simply omitting it leaves
   the old one on screen.
@@ -70,12 +76,13 @@ keychain profile `busybar-notary`.
   (BUSY 0, CUSTOM 1, OFF 2, APPS 3, SETTINGS 4). `SwitchWatcher` reads it with a
   ~40-line wire-format walker; the schema is public at busy-app/busybar-protobuf.
   It is *not* in the state snapshot, so the position is unknown until the switch
-  is first moved.
-- **Draw priority**, for what it is still worth: the canvas rejects a draw at
-  `priority <= current` from another app, but `priority < current` once you own
-  the screen — so a value that loses to an app at 10 has to be below 10, and
-  widgets sit at 9. A session raises the busy app to BLOCKING (101), which is the
-  409 every widget already handles.
+  is first moved — which is why it is remembered in `UserDefaults` across
+  launches, and why a reconnect keeps what it last knew rather than assuming Off.
+- **Do not gate the carousel on 409.** A refusal means somebody has the screen
+  this instant, not that the bar has its own screen up, and the widget that draws
+  most often catches the most transient ones — pISS redraws every four seconds
+  and rolls digit by digit. Every one of those stalled the rotation. The switch
+  alone decides.
 - **Banners need no session.** Every theme is a stock animation the device
   already has: each `theme.json` points `bg_path` at
   `shared/animations/<theme>_72x16.anim`, and a draw with
@@ -94,8 +101,8 @@ keychain profile `busybar-notary`.
   animates, the animation's draws keep landing — which looks like a bar showing
   nothing but rolling digits. That symptom means "the frame is being rejected",
   not "the animation is broken".
-- **Some characters are refused outright**: "↑↗→" gives HTTP 400, "°" and Cyrillic
-  do not. `deviceSafe` in `BarClient` swaps the known-bad ones on the way out.
+- **Some characters are refused outright**: "↑↗→" gives HTTP 400, while "°", "€"
+  and Cyrillic do not. `deviceSafe` in `BarClient` swaps the known-bad ones on the way out.
   It is a deny-list on purpose — channel names and track titles are not ASCII,
   and filtering to ASCII cost the YouTube widget its (Cyrillic) channel name.
 - **100 elements per request, ~104 ids per app**; beyond that, HTTP 400. Measured.

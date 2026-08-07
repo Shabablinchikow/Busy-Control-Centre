@@ -97,6 +97,9 @@ final class Carousel: ObservableObject {
             // would just queue up widgets nobody can see, and the one that came
             // up when the switch went back to Off would be an arbitrary one.
             if BarState.shared.busy {
+                if note?.hasPrefix("paused") != true {
+                    barLog.info("carousel paused — switch is \(BarState.shared.position.name, privacy: .public)")
+                }
                 note = "paused — the bar is showing its own screen"
                 if !(await barSleep(Self.pausedPoll)) { break }
                 continue
@@ -112,6 +115,7 @@ final class Carousel: ObservableObject {
             // On Call are exclusive:false so they coexist with the active widget,
             // which means Runner.start would never evict them and they would
             // pile up on the bar.
+            barLog.info("carousel -> \(entry.id, privacy: .public)")
             if let previous, previous != entry.id { Runner.shared?.stop(previous) }
             Runner.shared?.start(entry)
             previous = entry.id

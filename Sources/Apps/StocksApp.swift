@@ -65,26 +65,27 @@ final class StocksApp: MiniApp {
                 continue
             }
             let symbol = symbols[tick % symbols.count]
+            let key = symbol.query
             let now = Date().timeIntervalSince1970
 
-            if cache[symbol].map({ now - $0.at > refresh }) ?? true {
+            if cache[key].map({ now - $0.at > refresh }) ?? true {
                 do {
-                    cache[symbol] = (try await fetchQuote(symbol, fresh: polled), now)
+                    cache[key] = (try await fetchQuote(symbol, fresh: polled), now)
                     polled = true
                 } catch {
                     // Keep whatever is on the bar; a stale price beats a blank.
-                    status("\(symbol): \(Self.describe(error))")
+                    status("\(symbol.label): \(Self.describe(error))")
                 }
             }
 
-            if let q = cache[symbol]?.quote {
+            if let q = cache[key]?.quote {
                 let priceText = Self.priceText(q)
                 let pctText = Self.fmtPct(Self.pctChange(price: q.price, prevClose: q.prevClose))
                 let els = Self.frame(q)
                 // Only the same symbol's own numbers roll: flipping AAPL to MSFT
                 // is a new subject, not a value that moved.
                 var fields: [Roll.Field] = []
-                if shown?.symbol == symbol, let was = shown {
+                if shown?.symbol == key, let was = shown {
                     if was.price != priceText {
                         fields.append(Roll.Field(id: "price", from: was.price, to: priceText,
                                                  anchor: .right(Self.xRight),
@@ -98,7 +99,7 @@ final class StocksApp: MiniApp {
                                                  color: Self.color(q)))
                     }
                 }
-                shown = (symbol, priceText, pctText)
+                shown = (key, priceText, pctText)
                 if fields.isEmpty {
                     do {
                         let code = try await client.draw(app: app, elements: els)
@@ -123,33 +124,62 @@ final class StocksApp: MiniApp {
 
     /// `fresh: false` for the first quote of a run: `WebCache` still has the
     /// last answer, so a widget coming back draws at once.
-    func fetchQuote(_ symbol: String, fresh: Bool) async throws -> Quote {
-        let enc = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+    func fetchQuote(_ symbol: Symbol, fresh: Bool) async throws -> Quote {
+        let enc = symbol.query.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? symbol.query
         guard let url = URL(string: String(format: Self.quoteTemplate, enc)) else {
             throw WebError.bad
         }
         let obj = try await fetchJSON(url, userAgent: Self.userAgent, fresh: fresh)
         guard let result = ((obj["chart"] as? [String: Any])?["result"] as? [[String: Any]])?.first,
               let meta = result["meta"] as? [String: Any],
-              let price = Self.num(meta["regularMarketPrice"]) else { throw WebError.bad }
+              let quoted = Self.num(meta["regularMarketPrice"]) else { throw WebError.bad }
 
         // This endpoint carries chartPreviousClose, not previousClose.
-        let prev = Self.num(meta["chartPreviousClose"]) ?? price
+        var price = quoted
+        var prev = Self.num(meta["chartPreviousClose"]) ?? quoted
+        if Self.isPercentQuoted(meta["shortName"] as? String ?? "") {
+            // Per unit of nominal, so the bar agrees with the broker. Both sides
+            // are scaled, which leaves the day's change untouched.
+            price /= 100
+            prev /= 100
+        }
         let regular = (meta["currentTradingPeriod"] as? [String: Any])?["regular"] as? [String: Any]
         let open = Self.isOpen(now: Date().timeIntervalSince1970,
                               start: Self.num(regular?["start"]),
                               end: Self.num(regular?["end"]))
-        return Quote(symbol: symbol, price: price, prevClose: prev, marketOpen: open,
+        return Quote(symbol: symbol.label, price: price, prevClose: prev, marketOpen: open,
                      currency: meta["currency"] as? String ?? "")
     }
 
     // MARK: - Pure helpers
 
-    static func parseSymbols(_ raw: String) -> [String] {
-        raw.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
-            .filter { !$0.isEmpty }
+    /// One entry of the watchlist: what to ask for, and what to put on the bar.
+    struct Symbol {
+        var query: String
+        var label: String
     }
+
+    /// "AAPL, ETALD.PA=OAT60" — an optional label after "=", because a venue
+    /// ticker says nothing about what it is, and the bar has room for a word.
+    static func parseSymbols(_ raw: String) -> [Symbol] {
+        raw.split(separator: ",").compactMap { part in
+            let halves = part.split(separator: "=", maxSplits: 1)
+            let query = halves[0].trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            guard !query.isEmpty else { return nil }
+            let label = halves.count > 1
+                ? halves[1].trimmingCharacters(in: .whitespacesAndNewlines).uppercased() : query
+            return Symbol(query: query, label: label.isEmpty ? query : label)
+        }
+    }
+
+    /// Bonds are quoted as a percentage of nominal, so "88.0" is not 88 euros —
+    /// it is 88% of face value, which for this OAT (face value 1 EUR) is 0.88,
+    /// the figure a broker shows. Yahoo will not say what an instrument is: its
+    /// chart calls a bond an EQUITY, and the endpoints that know better now want
+    /// credentials. The name gives it away instead — a bond listing carries its
+    /// coupon, "OAT4.00%25AVRIL60", and no share is named with a percent sign.
+    static func isPercentQuoted(_ name: String) -> Bool { name.contains("%") }
 
     /// There is no marketState field on this endpoint; the regular trading window
     /// is in epoch seconds, so no timezone maths — and it is per-exchange, which
@@ -166,8 +196,12 @@ final class StocksApp: MiniApp {
 
     /// No decimals past a thousand: a tenth of a dollar on a $1704 share is noise,
     /// and those four pixels are what let a four-letter ticker keep the tall face.
+    /// Four of them under a euro, where a bond priced per unit of nominal would
+    /// otherwise round away to "0.88".
     static func fmtPrice(_ v: Double) -> String {
-        String(format: v >= 1000 ? "%.0f" : "%.2f", v)
+        if v >= 1000 { return String(format: "%.0f", v) }
+        if v < 1 { return String(format: "%.4f", v) }
+        return String(format: "%.2f", v)
     }
 
     /// What goes in front of the price. "$" where a currency uses one, otherwise
@@ -178,6 +212,7 @@ final class StocksApp: MiniApp {
         switch code.uppercased() {
         case "": return ""
         case "USD", "CAD", "AUD", "NZD", "HKD", "SGD", "TWD", "MXN": return "$"
+        case "EUR": return "\u{20AC}"
         default: return code.uppercased()
         }
     }
@@ -265,9 +300,16 @@ final class StocksApp: MiniApp {
 
     #if DEBUG
     static func selfCheck() {
-        assert(parseSymbols(" aapl , msft ,, ") == ["AAPL", "MSFT"],
+        assert(parseSymbols(" aapl , msft ,, ").map(\.query) == ["AAPL", "MSFT"],
                "symbols trimmed, upcased, blanks dropped")
-        assert(parseSymbols("") == [], "no symbols means no rotation")
+        assert(parseSymbols("").isEmpty, "no symbols means no rotation")
+        // A label after "=", because an ISIN would fill the display on its own.
+        let labelled = parseSymbols("aapl, fr0010870956=oat60")
+        assert(labelled.map(\.query) == ["AAPL", "FR0010870956"], "the query is what is asked for")
+        assert(labelled.map(\.label) == ["AAPL", "OAT60"], "the label is what is shown")
+        assert(parseSymbols("aapl=").map(\.label) == ["AAPL"], "an empty label falls back")
+        assert(labelled.map(\.label) != labelled.map(\.query),
+               "a labelled entry shows something other than what it asks for")
 
         // 312.24 against a 311.00 close is +0.40%.
         let pct = pctChange(price: 312.24, prevClose: 311.0)
@@ -290,8 +332,11 @@ final class StocksApp: MiniApp {
         assert(fmtPrice(312.244) == "312.24" && fmtPrice(1704.37) == "1704",
                "cents under a thousand, whole units above it")
         assert(currencyMark("USD") == "$" && currencyMark("usd") == "$", "dollars get a sign")
-        assert(currencyMark("EUR") == "EUR" && currencyMark("GBp") == "GBP",
-               "everything else gets its code, because the sign may not be drawable")
+        assert(currencyMark("EUR") == "\u{20AC}" && currencyMark("GBp") == "GBP",
+               "a euro sign where the bar can draw one, a code where it cannot")
+        assert(isPercentQuoted("OAT4.00%25AVRIL60") && !isPercentQuoted("Apple Inc."),
+               "a coupon in the name means the price is a percentage of nominal")
+        assert(fmtPrice(0.8814) == "0.8814", "a bond per unit of nominal keeps its detail")
         assert(currencyMark("") == "", "an unknown currency adds nothing")
         assert(priceText(Quote(price: 1704.37, currency: "USD")) == "$1704", "the shape on the bar")
         assert(priceText(Quote(price: 312.41, currency: "")).allSatisfy { $0.isASCII },
@@ -331,10 +376,11 @@ struct StocksSettingsView: View {
 
     var body: some View {
         Form {
-            TextField("Symbols", text: $symbols, prompt: Text("AAPL, MSFT, ^GSPC"))
+            TextField("Symbols", text: $symbols,
+                      prompt: Text("AAPL, MSFT, FR0010870956=OAT60"))
             TextField("Refresh quotes every (s)", value: $refresh, format: .number)
             TextField("Change symbol every (s)", value: $flip, format: .number)
-            Text("Comma-separated. Arrow is green up, red down, grey while that symbol's exchange is closed.")
+            Text("Comma-separated, and \"SYMBOL=LABEL\" to show a shorter name. Bonds quoted as a percentage of nominal are converted to price per unit. The change is green up, red down, grey while that market is shut.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -28,7 +28,7 @@ third-party dependencies — SwiftUI and the system frameworks only.
 | **Flightradar** | Tracks one flight by number: flight number and type, speed, route with a progress bar, altitude |
 | **Claude Limits** | Live Claude Code usage bars with the Clawd mascot |
 | **pISS Stream** | ISS urine-tank level from NASA telemetry, à la [pISSStream](https://github.com/Jaennaet/pISSStream) |
-| **Stocks** | Watchlist: a full-height ticker with the price and the day's change; both grey out when that exchange is shut |
+| **Stocks** | Watchlist: a full-height ticker with the price and the day's change, in the instrument's own currency; bonds are converted from percent of nominal |
 | **Weather** | Two-tone condition icon, temperature, wind speed and direction, UV index and chance of rain |
 | **YouTube** | Subscriber count for a channel, using your own API key |
 | **Mail** | Unread count from Apple Mail's inbox, or a small celebration |
